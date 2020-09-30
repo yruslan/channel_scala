@@ -1,2 +1,9 @@
-# channel
-Scala implementation of the concurrency primitive similar to GoLang channels.
+# Channel
+
+This is one of Scala implementations of GoLang channels. 
+
+ToDo
+
+### Docs
+
+ToDo
