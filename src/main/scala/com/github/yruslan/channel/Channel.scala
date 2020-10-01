@@ -26,8 +26,7 @@
 
 package com.github.yruslan.channel
 import java.util.concurrent.Semaphore
-import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock
-import java.util.concurrent.locks.{Condition, Lock, ReentrantLock}
+import java.util.concurrent.locks.ReentrantLock
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -44,7 +43,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
   // But this makes impossible to use a single lock for more than one condition.
   // So a lock from [java.util.concurrent.locks] is used instead. It allows to have several condition
   // variables that use a single lock.
-  private val lock = new ReentrantLock()
+  override private[channel] val lock = new ReentrantLock()
   private val crd = lock.newCondition()
   private val cwr = lock.newCondition()
 
@@ -70,8 +69,8 @@ class Channel[T](val capacity: Int) extends ChannelLike {
       if (closed) {
         throw new IllegalStateException(s"Attempt to send to a closed channel.")
       }
-      writers += 1
 
+      writers += 1
       if (capacity == 0) {
         // Synchronous send
         while (syncValue.nonEmpty && !closed) {
@@ -97,21 +96,93 @@ class Channel[T](val capacity: Int) extends ChannelLike {
         }
         notifyReaders()
       }
+      writers -= 1
     } finally {
       lock.unlock()
     }
   }
 
-  def trySend(value: T): Unit = {
-    ???
+  def trySend(value: T): Boolean = {
+    lock.lock()
+    try {
+      if (closed) {
+        throw new IllegalStateException(s"Attempt to send to a closed channel.")
+      }
+      if (capacity == 0) {
+        throw new IllegalStateException(s"trySend cannot be used on a sync channel.")
+      }
+      if (q.size == capacity) {
+        false
+      } else {
+        q.enqueue(value)
+        notifyReaders()
+        true
+      }
+    } finally {
+      lock.unlock()
+    }
   }
 
   def recv(): T = {
-    ???
+    lock.lock()
+    try {
+      if (closed) {
+        throw new IllegalStateException(s"Attempt to receive from a closed channel.")
+      }
+
+      readers += 1
+
+      var v: T = if (capacity == 0) {
+        // Synchronous channel
+        while (!closed && syncValue.isEmpty) {
+          crd.await()
+        }
+        syncValue.get
+      } else {
+        // Asynchronous channel
+        while (!closed && q.isEmpty) {
+          crd.await()
+        }
+        q.dequeue()
+      }
+      syncValue = None
+
+      readers -= 1
+      if (readers == 0) {
+        cwr.signal()
+      }
+      v
+    } finally {
+      lock.unlock()
+    }
   }
 
   def tryRecv(): Option[T] = {
-    ???
+    lock.lock()
+    try {
+      if (capacity == 0) {
+        // Synchronous channel
+        if (syncValue.isEmpty || closed) {
+          None
+        } else {
+          val v = syncValue
+          syncValue = None
+          cwr.signal()
+          v
+        }
+      } else {
+        // Asynchronous channel
+        if (q.isEmpty || closed) {
+          None
+        } else {
+          val v = q.dequeue()
+          cwr.signal()
+          Option(v)
+        }
+      }
+    } finally {
+      lock.unlock()
+    }
   }
 
   override def isClosed: Boolean = {
@@ -122,7 +193,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     this eq rhs
   }
 
-  override protected def getBufSize: Int = {
+  override private [channel] def getBufSize: Int = {
     lock.lock()
     try {
       if (capacity > 0) {
@@ -138,7 +209,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     }
   }
 
-  override protected def addWaiter(sem: Semaphore): Unit = {
+  override private [channel] def addWaiter(sem: Semaphore): Unit = {
     lock.lock()
     try {
       waiters += sem
@@ -147,7 +218,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     }
   }
 
-  override protected def delWaiter(sem: Semaphore): Unit = {
+  override private [channel] def delWaiter(sem: Semaphore): Unit = {
     lock.lock()
     try {
       waiters --= waiters.filter(_ eq sem)
@@ -165,4 +236,68 @@ class Channel[T](val capacity: Int) extends ChannelLike {
       }
     }
   }
+}
+
+object Channel {
+  /**
+   * Waits to receive a message from any of the channels.
+   *
+   * @param channel A first channel to wait for (mandatory).
+   * @param channels Other channels to wait for.
+   * @return A channel that has a pending message.
+   */
+  def select(channel: ChannelLike, channels: ChannelLike*): ChannelLike = {
+    val sem = new Semaphore(0)
+
+    var i = 0
+
+    val chans = (channel :: channels.toList).toArray
+
+    // Add waiters
+    while (i < chans.length) {
+      val ch = chans(i)
+      ch.lock.lock()
+      try {
+        if (ch.getBufSize > 0 || ch.isClosed) {
+          var j = 0
+          while (j < i) {
+            chans(j).delWaiter(sem)
+            j += 1
+          }
+          return ch
+        }
+        ch.addWaiter(sem)
+      } finally {
+        ch.lock.unlock()
+      }
+      i += 1
+    }
+
+    i = 0
+
+    while (true) {
+      // Re-checking all channels
+      while (i < chans.length) {
+        val ch = chans(i)
+        ch.lock.lock()
+        try {
+          if (ch.getBufSize > 0 || ch.isClosed) {
+            var j = 0
+            while (j < chans.length) {
+              chans(j).delWaiter(sem)
+              j += 1
+            }
+            return ch
+          }
+        } finally {
+          ch.lock.unlock()
+        }
+        i += 1
+      }
+      sem.acquire()
+    }
+    // This never happens since the method can only exit on other return paths
+    null
+  }
+
 }

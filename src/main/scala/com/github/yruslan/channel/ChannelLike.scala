@@ -27,13 +27,15 @@
 package com.github.yruslan.channel
 
 import java.util.concurrent.Semaphore
+import java.util.concurrent.locks.Lock
 
 trait ChannelLike {
   def isClosed: Boolean
 
   def isSame(rhs: ChannelLike): Boolean
 
-  protected def getBufSize: Int
-  protected def addWaiter(sem: Semaphore)
-  protected def delWaiter(sem: Semaphore)
+  private [channel] def getBufSize: Int
+  private [channel] def addWaiter(sem: Semaphore)
+  private [channel] def delWaiter(sem: Semaphore)
+  private [channel] val lock: Lock
 }
