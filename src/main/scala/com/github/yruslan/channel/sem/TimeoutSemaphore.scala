@@ -24,19 +24,40 @@
  * For more information, please refer to <http://opensource.org/licenses/MIT>
  */
 
-package com.github.yruslan.channel
+package com.github.yruslan.channel.sem
 
-import java.util.concurrent.locks.Lock
+import java.time.Instant
 
-import com.github.yruslan.channel.sem.TimeoutSemaphore
+import scala.concurrent.duration.Duration
 
-trait ChannelLike {
-  def isClosed: Boolean
+class TimeoutSemaphore(initialValue: Int) {
+  private var value = initialValue
 
-  def isSame(rhs: ChannelLike): Boolean
+  def acquire(timeout: Duration = Duration.Inf): Boolean = this.synchronized {
+    val timeoutMilli = timeout.toMillis
+    val start = Instant.now.toEpochMilli
 
-  private [channel] def getBufSize: Int
-  private [channel] def addWaiter(sem: TimeoutSemaphore)
-  private [channel] def delWaiter(sem: TimeoutSemaphore)
-  private [channel] val lock: Lock
+    def isNotTimedOut: Boolean = {
+      if (timeoutMilli == 0L) {
+        false
+      } else {
+        Instant.now.toEpochMilli - start > timeoutMilli
+      }
+    }
+
+    while (value == 0 && isNotTimedOut) {
+      val nanos = if (timeout == Duration.Inf) 0 else timeout.toNanos
+      wait(nanos)
+    }
+    if (value > 0) {
+      value -= 1
+      true
+    } else {
+      false
+    }
+  }
+
+  def release(): Unit = this.synchronized {
+    value += 1
+  }
 }

@@ -25,18 +25,21 @@
  */
 
 package com.github.yruslan.channel
-import java.util.concurrent.Semaphore
+
 import java.util.concurrent.locks.ReentrantLock
+
+import com.github.yruslan.channel.sem.TimeoutSemaphore
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import scala.concurrent.duration.Duration
 
 class Channel[T](val capacity: Int) extends ChannelLike {
   private var readers: Int = 0
   private var writers: Int = 0
   private var closed = false
   private val q = new mutable.Queue[T]
-  private val waiters = new ListBuffer[Semaphore]
+  private val waiters = new ListBuffer[TimeoutSemaphore]
   private var syncValue: Option[T] = None
 
   // Scala & Java monitors are designed so each object can act as a mutex and a condition variable.
@@ -74,7 +77,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
       if (capacity == 0) {
         // Synchronous send
         while (syncValue.nonEmpty && !closed) {
-            cwr.await()
+          cwr.await()
         }
         if (!closed) {
           syncValue = Option(value)
@@ -193,7 +196,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     this eq rhs
   }
 
-  override private [channel] def getBufSize: Int = {
+  override private[channel] def getBufSize: Int = {
     lock.lock()
     try {
       if (capacity > 0) {
@@ -209,7 +212,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     }
   }
 
-  override private [channel] def addWaiter(sem: Semaphore): Unit = {
+  override private[channel] def addWaiter(sem: TimeoutSemaphore): Unit = {
     lock.lock()
     try {
       waiters += sem
@@ -218,7 +221,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     }
   }
 
-  override private [channel] def delWaiter(sem: Semaphore): Unit = {
+  override private[channel] def delWaiter(sem: TimeoutSemaphore): Unit = {
     lock.lock()
     try {
       waiters --= waiters.filter(_ eq sem)
@@ -228,7 +231,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
   }
 
   private def notifyReaders(): Unit = {
-    if (readers > 0){
+    if (readers > 0) {
       crd.signal()
     } else {
       if (waiters.nonEmpty) {
@@ -239,15 +242,27 @@ class Channel[T](val capacity: Int) extends ChannelLike {
 }
 
 object Channel {
+
   /**
    * Waits to receive a message from any of the channels.
    *
-   * @param channel A first channel to wait for (mandatory).
+   * @param channel  A first channel to wait for (mandatory).
    * @param channels Other channels to wait for.
    * @return A channel that has a pending message.
    */
   def select(channel: ChannelLike, channels: ChannelLike*): ChannelLike = {
-    val sem = new Semaphore(0)
+    select(Duration.Inf, channel, channels: _*).get
+  }
+
+  /**
+   * Waits to receive a message from any of the channels.
+   *
+   * @param channel  A first channel to wait for (mandatory).
+   * @param channels Other channels to wait for.
+   * @return A channel that has a pending message.
+   */
+  def select(timout: Duration, channel: ChannelLike, channels: ChannelLike*): Option[ChannelLike] = {
+    val sem = new TimeoutSemaphore(0)
 
     var i = 0
 
@@ -264,7 +279,7 @@ object Channel {
             chans(j).delWaiter(sem)
             j += 1
           }
-          return ch
+          return Option(ch)
         }
         ch.addWaiter(sem)
       } finally {
@@ -287,14 +302,17 @@ object Channel {
               chans(j).delWaiter(sem)
               j += 1
             }
-            return ch
+            return Option(ch)
           }
         } finally {
           ch.lock.unlock()
         }
         i += 1
       }
-      sem.acquire()
+      val success = sem.acquire(timout)
+      if (!success) {
+        return None
+      }
     }
     // This never happens since the method can only exit on other return paths
     null
