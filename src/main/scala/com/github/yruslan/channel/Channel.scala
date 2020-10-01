@@ -58,8 +58,8 @@ class Channel[T](val capacity: Int) extends ChannelLike {
         for (w <- waiters) {
           w.release()
         }
-        crd.notifyAll()
-        cwr.notifyAll()
+        crd.signalAll()
+        cwr.signalAll()
       }
     } finally {
       lock.unlock()
@@ -130,7 +130,9 @@ class Channel[T](val capacity: Int) extends ChannelLike {
     lock.lock()
     try {
       if (closed) {
-        throw new IllegalStateException(s"Attempt to receive from a closed channel.")
+        if (syncValue.isEmpty && q.isEmpty) {
+          throw new IllegalStateException(s"Attempt to receive from a closed channel.")
+        }
       }
 
       readers += 1
@@ -163,24 +165,28 @@ class Channel[T](val capacity: Int) extends ChannelLike {
   def tryRecv(): Option[T] = {
     lock.lock()
     try {
-      if (capacity == 0) {
-        // Synchronous channel
-        if (syncValue.isEmpty || closed) {
-          None
-        } else {
-          val v = syncValue
-          syncValue = None
-          cwr.signal()
-          v
-        }
+      if (closed && syncValue.isEmpty && q.isEmpty) {
+        None
       } else {
-        // Asynchronous channel
-        if (q.isEmpty || closed) {
-          None
+        if (capacity == 0) {
+          // Synchronous channel
+          if (syncValue.isEmpty) {
+            None
+          } else {
+            val v = syncValue
+            syncValue = None
+            cwr.signal()
+            v
+          }
         } else {
-          val v = q.dequeue()
-          cwr.signal()
-          Option(v)
+          // Asynchronous channel
+          if (q.isEmpty) {
+            None
+          } else {
+            val v = q.dequeue()
+            cwr.signal()
+            Option(v)
+          }
         }
       }
     } finally {
@@ -242,6 +248,10 @@ class Channel[T](val capacity: Int) extends ChannelLike {
 }
 
 object Channel {
+
+  def createSyncChannel[T](): Channel[T] = new Channel[T](0)
+
+  def createAsyncChannel[T](capacity: Int): Channel[T] = new Channel[T](capacity)
 
   /**
    * Waits to receive a message from any of the channels.
