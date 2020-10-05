@@ -34,7 +34,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 
-class Channel[T](val capacity: Int) extends ChannelLike {
+class Channel[T](val maxCapacity: Int) extends ChannelLike {
   private var readers: Int = 0
   private var writers: Int = 0
   private var closed = false
@@ -74,7 +74,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
       }
 
       writers += 1
-      if (capacity == 0) {
+      if (maxCapacity == 0) {
         // Synchronous send
         while (syncValue.nonEmpty && !closed) {
           cwr.await()
@@ -90,7 +90,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
         }
       } else {
         // Asynchronous send
-        while (q.size == capacity && !closed) {
+        while (q.size == maxCapacity && !closed) {
           cwr.await()
         }
 
@@ -111,10 +111,10 @@ class Channel[T](val capacity: Int) extends ChannelLike {
       if (closed) {
         throw new IllegalStateException(s"Attempt to send to a closed channel.")
       }
-      if (capacity == 0) {
+      if (maxCapacity == 0) {
         throw new IllegalStateException(s"trySend cannot be used on a sync channel.")
       }
-      if (q.size == capacity) {
+      if (q.size == maxCapacity) {
         false
       } else {
         q.enqueue(value)
@@ -137,7 +137,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
 
       readers += 1
 
-      var v: T = if (capacity == 0) {
+      var v: T = if (maxCapacity == 0) {
         // Synchronous channel
         while (!closed && syncValue.isEmpty) {
           crd.await()
@@ -168,7 +168,7 @@ class Channel[T](val capacity: Int) extends ChannelLike {
       if (closed && syncValue.isEmpty && q.isEmpty) {
         None
       } else {
-        if (capacity == 0) {
+        if (maxCapacity == 0) {
           // Synchronous channel
           if (syncValue.isEmpty) {
             None
@@ -203,18 +203,13 @@ class Channel[T](val capacity: Int) extends ChannelLike {
   }
 
   override private[channel] def getBufSize: Int = {
-    lock.lock()
-    try {
-      if (capacity > 0) {
-        q.size
-      } else {
-        syncValue match {
-          case Some(_) => 1
-          case None => 0
-        }
+    if (maxCapacity > 0) {
+      q.size
+    } else {
+      syncValue match {
+        case Some(_) => 1
+        case None => 0
       }
-    } finally {
-      lock.unlock()
     }
   }
 
@@ -230,7 +225,12 @@ class Channel[T](val capacity: Int) extends ChannelLike {
   override private[channel] def delWaiter(sem: TimeoutSemaphore): Unit = {
     lock.lock()
     try {
+      val size1 = waiters.size
       waiters --= waiters.filter(_ eq sem)
+      val size2 = waiters.size
+      if (size1 != size2 + 1) {
+        throw new IllegalStateException(s"Could not find the waiter semaphore.")
+      }
     } finally {
       lock.unlock()
     }
@@ -251,7 +251,7 @@ object Channel {
 
   def createSyncChannel[T](): Channel[T] = new Channel[T](0)
 
-  def createAsyncChannel[T](capacity: Int): Channel[T] = new Channel[T](capacity)
+  def createAsyncChannel[T](maxCapacity: Int): Channel[T] = new Channel[T](maxCapacity)
 
   /**
    * Waits to receive a message from any of the channels.
@@ -261,17 +261,17 @@ object Channel {
    * @return A channel that has a pending message.
    */
   def select(channel: ChannelLike, channels: ChannelLike*): ChannelLike = {
-    select(Duration.Inf, channel, channels: _*).get
+    trySelect(Duration.Inf, channel, channels: _*).get
   }
 
   /**
-   * Waits to receive a message from any of the channels.
+   * Waits to receive a message from any of the channels for a specified amout of time.
    *
    * @param channel  A first channel to wait for (mandatory).
    * @param channels Other channels to wait for.
-   * @return A channel that has a pending message.
+   * @return A channel that has a pending message or None, if any of the channels have a pending message.
    */
-  def select(timout: Duration, channel: ChannelLike, channels: ChannelLike*): Option[ChannelLike] = {
+  def trySelect(timout: Duration, channel: ChannelLike, channels: ChannelLike*): Option[ChannelLike] = {
     val sem = new TimeoutSemaphore(0)
 
     var i = 0
@@ -318,6 +318,7 @@ object Channel {
           ch.lock.unlock()
         }
         i += 1
+        println(s"check $i")
       }
       val success = sem.acquire(timout)
       if (!success) {

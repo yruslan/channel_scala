@@ -34,19 +34,19 @@ class TimeoutSemaphore(initialValue: Int) {
   private var value = initialValue
 
   def acquire(timeout: Duration = Duration.Inf): Boolean = this.synchronized {
-    val timeoutMilli = timeout.toMillis
+    val timeoutMilli = if (timeout.isFinite()) timeout.toMillis else 0L
     val start = Instant.now.toEpochMilli
 
     def isNotTimedOut: Boolean = {
       if (timeoutMilli == 0L) {
-        false
+        true
       } else {
         Instant.now.toEpochMilli - start > timeoutMilli
       }
     }
 
     while (value == 0 && isNotTimedOut) {
-      val nanos = if (timeout == Duration.Inf) 0 else timeout.toNanos
+      val nanos = if (timeout.isFinite()) timeout.toNanos else 0L
       wait(nanos)
     }
     if (value > 0) {
@@ -59,5 +59,6 @@ class TimeoutSemaphore(initialValue: Int) {
 
   def release(): Unit = this.synchronized {
     value += 1
+    this.notify()
   }
 }

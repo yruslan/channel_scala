@@ -28,8 +28,10 @@ package com.github.yruslan.channel
 
 import java.time.Instant
 
+import com.github.yruslan.channel.Channel.select
 import org.scalatest.WordSpec
 
+import scala.collection.mutable.ListBuffer
 import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.{Duration, SECONDS}
@@ -134,6 +136,124 @@ class ChannelSuite extends WordSpec {
       assert(finish - start > 100)
     }
 
+    "select()" should {
+      "work with a single channel" in {
+        val channel = Channel.createAsyncChannel[Int](2)
+
+        channel.send(1)
+
+        val selected = Channel.select(channel)
+
+        assert(selected == channel)
+
+        val value = channel.tryRecv()
+
+        assert(value.contains(1))
+      }
+
+      "work with two channels" in {
+        val channel1 = Channel.createAsyncChannel[Int](1)
+        val channel2 = Channel.createAsyncChannel[Int](1)
+
+        channel1.send(1)
+        channel2.send(2)
+
+        val selected1 = Channel.select(channel1, channel2)
+        val value1 = if (selected1 == channel1) {
+          channel1.recv()
+        } else {
+          channel2.recv()
+        }
+
+        val selected2 = Channel.select(channel1, channel2)
+        val value2 = if (selected2 == channel1) {
+          channel1.recv()
+        } else {
+          channel2.recv()
+        }
+
+        assert(value1 == 1 || value1 == 2)
+        assert(value2 == 1 || value2 == 2)
+        assert(value1 != value2)
+      }
+    }
+  }
+
+  "master/worker model" should {
+
+    // Worker that operates on 2 channels
+    def worker2(workerNum: Int, results: ListBuffer[String], channell: Channel[Int], channel2: Channel[String]): Unit = {
+      while (!channell.isClosed && !channel2.isClosed) {
+        select(channell, channel2) match {
+          case ch1 if ch1 == channell =>
+            channell.tryRecv().foreach(v => results.synchronized {
+              results += s"$workerNum->i$v"
+            })
+          case ch2 if ch2 == channel2 =>
+            channel2.tryRecv().foreach(v => results.synchronized {
+              results += s"$workerNum->s$v"
+            })
+        }
+        Thread.sleep(10)
+      }
+    }
+
+    "work with one thread and two channels" in {
+      val channell = Channel.createSyncChannel[Int]()
+      val channel2 = Channel.createSyncChannel[String]()
+      val results = new ListBuffer[String]
+
+      val worked1Fut = Future {
+        Thread.sleep(20)
+        worker2(1, results, channell, channel2)
+      }
+
+      channell.send(1)
+      channel2.send("A")
+      channell.send(2)
+      channel2.send("B")
+      channell.send(3)
+      channel2.send("C")
+
+      channell.close()
+      channel2.close()
+
+      Await.result(worked1Fut, Duration.apply(4, SECONDS))
+
+      assert(results.size == 6)
+    }
+
+    "work with two threads and two channels" in {
+      val channell = Channel.createSyncChannel[Int]()
+      val channel2 = Channel.createSyncChannel[String]()
+      val results = new ListBuffer[String]
+
+
+      val worked1Fut = Future {
+        Thread.sleep(20)
+        worker2(1, results, channell, channel2)
+      }
+
+      /*val worked2Fut = Future {
+        Thread.sleep(30)
+        worker2(2, results, channell, channel2)
+      }*/
+
+      channell.send(1)
+      channel2.send("A")
+      channell.send(2)
+      channel2.send("B")
+      channell.send(3)
+      channel2.send("C")
+
+      channell.close()
+      channel2.close()
+
+      Await.result(worked1Fut, Duration.apply(4, SECONDS))
+      //Await.result(worked2Fut, Duration.apply(4, SECONDS))
+
+      println(results.mkString(","))
+    }
   }
 
 }
