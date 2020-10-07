@@ -55,9 +55,7 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
     try {
       if (!closed) {
         closed = true
-        for (w <- waiters) {
-          w.release()
-        }
+        waiters.foreach(w => w.release())
         crd.signalAll()
         cwr.signalAll()
       }
@@ -302,9 +300,11 @@ object Channel {
 
     while (true) {
       // Re-checking all channels
+      i = 0
       while (i < chans.length) {
         val ch = chans(i)
-        ch.lock.lock()
+        val lock = ch.lock
+        lock.lock()
         try {
           if (ch.getBufSize > 0 || ch.isClosed) {
             var j = 0
@@ -315,10 +315,9 @@ object Channel {
             return Option(ch)
           }
         } finally {
-          ch.lock.unlock()
+          lock.unlock()
         }
         i += 1
-        println(s"check $i")
       }
       val success = sem.acquire(timout)
       if (!success) {
