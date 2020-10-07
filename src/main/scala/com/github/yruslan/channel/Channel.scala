@@ -246,10 +246,29 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
 }
 
 object Channel {
+  /**
+   * Create a synchronous channel.
+   *
+   * @tparam T The type of the channel.
+   * @return A new channel
+   */
+  def make[T]: Channel[T] = {
+    new Channel[T](0)
+  }
 
-  def createSyncChannel[T](): Channel[T] = new Channel[T](0)
+  /**
+   * Create a channel. By default a synchronous channel will be created.
+   * If bufferSize is greater then zero, a buffered channel will be created.
+   *
+   * @param bufferSize Asynchronous buffer size.
+   * @tparam T The type of the channel.
+   * @return A new channel
+   */
+  def make[T](bufferSize: Int): Channel[T] = {
+    require(bufferSize >= 0)
 
-  def createAsyncChannel[T](maxCapacity: Int): Channel[T] = new Channel[T](maxCapacity)
+    new Channel[T](bufferSize)
+  }
 
   /**
    * Waits to receive a message from any of the channels.

@@ -39,7 +39,7 @@ import scala.concurrent.duration.{Duration, SECONDS}
 class ChannelSuite extends WordSpec {
   "send/recv" should {
     "work for asychronous channels in a single threaded setup" in {
-      val channel1 = Channel.createAsyncChannel[Int](1)
+      val channel1 = Channel.make[Int](1)
       val channel2 = channel1
 
       channel1.send(10)
@@ -49,7 +49,7 @@ class ChannelSuite extends WordSpec {
     }
 
     "async sent messages should arrive in FIFO order" in {
-      val channel1 = Channel.createAsyncChannel[Int](5)
+      val channel1 = Channel.make[Int](5)
       val channel2 = channel1
 
       channel1.send(1)
@@ -71,7 +71,7 @@ class ChannelSuite extends WordSpec {
     }
 
     "closed channel can still be used to receive pending messages" in {
-      val channel = Channel.createAsyncChannel[Int](5)
+      val channel = Channel.make[Int](5)
 
       channel.send(1)
       channel.send(2)
@@ -97,7 +97,7 @@ class ChannelSuite extends WordSpec {
     }
 
     "can't send to a closed channel" in {
-      val channel = Channel.createAsyncChannel[Int](2)
+      val channel = Channel.make[Int](2)
 
       val ok = channel.trySend(1)
       assert(ok)
@@ -119,7 +119,7 @@ class ChannelSuite extends WordSpec {
 
     "sync send/recv should block" in {
       val start = Instant.now.toEpochMilli
-      val channel = Channel.createSyncChannel[Int]()
+      val channel = Channel.make[Int]
 
       val f = Future {
         Thread.sleep(100)
@@ -138,7 +138,7 @@ class ChannelSuite extends WordSpec {
 
     "select()" should {
       "work with a single channel" in {
-        val channel = Channel.createAsyncChannel[Int](2)
+        val channel = Channel.make[Int](2)
 
         channel.send(1)
 
@@ -152,8 +152,8 @@ class ChannelSuite extends WordSpec {
       }
 
       "work with two channels" in {
-        val channel1 = Channel.createAsyncChannel[Int](1)
-        val channel2 = Channel.createAsyncChannel[Int](1)
+        val channel1 = Channel.make[Int](1)
+        val channel2 = Channel.make[Int](1)
 
         channel1.send(1)
         channel2.send(2)
@@ -199,8 +199,8 @@ class ChannelSuite extends WordSpec {
     }
 
     "work with one thread and two channels" in {
-      val channell = Channel.createSyncChannel[Int]()
-      val channel2 = Channel.createSyncChannel[String]()
+      val channell = Channel.make[Int]
+      val channel2 = Channel.make[String]
       val results = new ListBuffer[String]
 
       val worked1Fut = Future {
@@ -224,20 +224,19 @@ class ChannelSuite extends WordSpec {
     }
 
     "work with two threads and two channels" in {
-      val channell = Channel.createSyncChannel[Int]()
-      val channel2 = Channel.createSyncChannel[String]()
+      val channell = Channel.make[Int]
+      val channel2 = Channel.make[String]
       val results = new ListBuffer[String]
-
 
       val worked1Fut = Future {
         Thread.sleep(20)
         worker2(1, results, channell, channel2)
       }
 
-      /*val worked2Fut = Future {
+      val worked2Fut = Future {
         Thread.sleep(30)
         worker2(2, results, channell, channel2)
-      }*/
+      }
 
       channell.send(1)
       channel2.send("A")
@@ -246,13 +245,14 @@ class ChannelSuite extends WordSpec {
       channell.send(3)
       channel2.send("C")
 
+      Thread.sleep(300)
       channell.close()
       channel2.close()
 
       Await.result(worked1Fut, Duration.apply(4, SECONDS))
-      //Await.result(worked2Fut, Duration.apply(4, SECONDS))
+      Await.result(worked2Fut, Duration.apply(4, SECONDS))
 
-      println(results.mkString(","))
+      assert(results.size == 6)
     }
   }
 
