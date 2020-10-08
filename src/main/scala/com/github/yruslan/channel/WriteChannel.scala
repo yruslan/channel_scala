@@ -26,15 +26,9 @@
 
 package com.github.yruslan.channel
 
-import java.util.concurrent.locks.Lock
+trait WriteChannel[T] extends ChannelLike {
+  def send(value: T): Unit
+  def trySend(value: T): Boolean
 
-import com.github.yruslan.channel.sem.TimeoutSemaphore
-
-trait ChannelLike {
-  def isClosed: Boolean
-
-  private [channel] def getBufSize: Int
-  private [channel] def addWaiter(sem: TimeoutSemaphore)
-  private [channel] def delWaiter(sem: TimeoutSemaphore)
-  private [channel] val lock: Lock
+  def close(): Unit
 }

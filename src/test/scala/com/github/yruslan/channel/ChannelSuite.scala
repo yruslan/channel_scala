@@ -27,12 +27,13 @@
 package com.github.yruslan.channel
 
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 import com.github.yruslan.channel.Channel.select
 import org.scalatest.WordSpec
 
 import scala.collection.mutable.ListBuffer
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, Future, TimeoutException}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.{Duration, SECONDS}
 
@@ -179,8 +180,82 @@ class ChannelSuite extends WordSpec {
     }
   }
 
-  "master/worker model" should {
+  "trySelect()" should {
+    "handle finite timeouts" when {
+      "timeout is not expired" in {
+        val channel = Channel.make[Int](1)
 
+        Future {
+          Thread.sleep(1)
+          channel.send(1)
+        }
+
+        val selected = Channel.trySelect(Duration.create(200, TimeUnit.MILLISECONDS), channel)
+
+        assert(selected.contains(channel))
+      }
+
+      "timeout is expired" in {
+        val channel = Channel.make[Int](1)
+
+        Future {
+          Thread.sleep(50)
+          channel.send(1)
+        }
+
+        val selected = Channel.trySelect(Duration.create(1, TimeUnit.MILLISECONDS), channel)
+
+        assert(selected.isEmpty)
+      }
+    }
+
+    "handle zero timeouts" when {
+      "when data is available" in {
+        val channel = Channel.make[Int](1)
+
+        channel.send(1)
+
+        val selected = Channel.trySelect(Duration.Zero, channel)
+
+        assert(selected.contains(channel))
+      }
+
+      "when data is not available" in {
+        val channel = Channel.make[Int](1)
+
+        val selected = Channel.trySelect(Duration.Zero, channel)
+
+        assert(selected.isEmpty)
+      }
+    }
+
+    "handle infinite timeouts" when {
+      "when data is available" in {
+        val channel = Channel.make[Int](1)
+
+        channel.send(1)
+
+        val selected = Channel.trySelect(Duration.Inf, channel)
+
+        assert(selected.contains(channel))
+      }
+
+      "when data is not available" in {
+        val channel = Channel.make[Int](1)
+
+        val fut = Future {
+          Channel.trySelect(Duration.Inf, channel)
+        }
+
+        intercept[TimeoutException] {
+          Await.ready(fut, Duration.create(50, TimeUnit.MILLISECONDS))
+        }
+      }
+    }
+
+  }
+
+  "master/worker model" should {
     // Worker that operates on 2 channels
     def worker2(workerNum: Int, results: ListBuffer[String], channell: Channel[Int], channel2: Channel[String]): Unit = {
       while (!channell.isClosed && !channel2.isClosed) {

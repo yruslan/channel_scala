@@ -34,7 +34,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 
-class Channel[T](val maxCapacity: Int) extends ChannelLike {
+class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[T] {
   private var readers: Int = 0
   private var writers: Int = 0
   private var closed = false
@@ -50,7 +50,7 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
   private val crd = lock.newCondition()
   private val cwr = lock.newCondition()
 
-  def close(): Unit = {
+  override def close(): Unit = {
     lock.lock()
     try {
       if (!closed) {
@@ -64,7 +64,7 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
     }
   }
 
-  def send(value: T): Unit = {
+  override def send(value: T): Unit = {
     lock.lock()
     try {
       if (closed) {
@@ -103,7 +103,7 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
     }
   }
 
-  def trySend(value: T): Boolean = {
+  override def trySend(value: T): Boolean = {
     lock.lock()
     try {
       if (closed) {
@@ -124,7 +124,7 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
     }
   }
 
-  def recv(): T = {
+  override def recv(): T = {
     lock.lock()
     try {
       if (closed) {
@@ -160,7 +160,7 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
     }
   }
 
-  def tryRecv(): Option[T] = {
+  override def tryRecv(): Option[T] = {
     lock.lock()
     try {
       if (closed && syncValue.isEmpty && q.isEmpty) {
@@ -193,11 +193,11 @@ class Channel[T](val maxCapacity: Int) extends ChannelLike {
   }
 
   override def isClosed: Boolean = {
-    closed
-  }
-
-  override def isSame(rhs: ChannelLike): Boolean = {
-    this eq rhs
+    if (syncValue.nonEmpty || q.nonEmpty) {
+      false
+    } else {
+      closed
+    }
   }
 
   override private[channel] def getBufSize: Int = {
@@ -277,7 +277,7 @@ object Channel {
    * @param channels Other channels to wait for.
    * @return A channel that has a pending message.
    */
-  def select(channel: ChannelLike, channels: ChannelLike*): ChannelLike = {
+  def select(channel: ReadChannel[_], channels: ReadChannel[_]*): ChannelLike = {
     trySelect(Duration.Inf, channel, channels: _*).get
   }
 
@@ -288,14 +288,13 @@ object Channel {
    * @param channels Other channels to wait for.
    * @return A channel that has a pending message or None, if any of the channels have a pending message.
    */
-  def trySelect(timout: Duration, channel: ChannelLike, channels: ChannelLike*): Option[ChannelLike] = {
+  def trySelect(timout: Duration, channel: ReadChannel[_], channels: ReadChannel[_]*): Option[ChannelLike] = {
     val sem = new TimeoutSemaphore(0)
-
-    var i = 0
 
     val chans = (channel :: channels.toList).toArray
 
     // Add waiters
+    var i = 0
     while (i < chans.length) {
       val ch = chans(i)
       ch.lock.lock()
@@ -314,8 +313,6 @@ object Channel {
       }
       i += 1
     }
-
-    i = 0
 
     while (true) {
       // Re-checking all channels

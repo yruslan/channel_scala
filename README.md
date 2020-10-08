@@ -98,11 +98,44 @@ working...
 done
 ```
 
+### Directed channels
+
+You can define channel directions. That is channels that can either only send or only receive messages, but not both.
+
+When you define a method, define an argument as `ReadChannel` if you want the method to be able to only receive messages.
+Define the argument as `WriteChannel` so the method can only send messages to the channel.
+
+```scala
+import com.github.yruslan.channel._
+
+def ping(pings: WriteChannel[String], msg: String): Unit = {
+  pings.send(msg)
+}
+
+def pong(pings: ReadChannel[String], pongs: WriteChannel[String]): Unit = {
+val msg = pings.recv()
+  pongs.send(msg)
+}
+
+val pings = Channel.make[String](1)
+val pongs = Channel.make[String](1)
+
+ping(pings, "message")
+pong(pings, pongs)
+
+println(pongs.recv())
+```
+
+Output:
+```
+message
+```
+
 ### Select
 
 What makes channels great is that a program can wait for events in several channels at the same time.
 In this example `select()` is used to wait for any of two channels to have an incoming message. Once a message
-is available it it received.
+is available it is received.
 
 ```scala
 import com.github.yruslan.channel.Channel
