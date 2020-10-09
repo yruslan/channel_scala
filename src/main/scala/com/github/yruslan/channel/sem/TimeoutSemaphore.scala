@@ -27,13 +27,17 @@
 package com.github.yruslan.channel.sem
 
 import java.time.Instant
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 import scala.concurrent.duration.Duration
 
 class TimeoutSemaphore(initialValue: Int) {
   private var value = initialValue
+  private val lock = new ReentrantLock()
+  private val cv = lock.newCondition()
 
-  def acquire(timeout: Duration = Duration.Inf): Boolean = this.synchronized {
+  def acquire(timeout: Duration = Duration.Inf): Boolean = {
     val infinite = !timeout.isFinite()
     val timeoutMilli = if (timeout.isFinite()) timeout.toMillis else 0L
 
@@ -49,23 +53,39 @@ class TimeoutSemaphore(initialValue: Int) {
       }
     }
 
-    while (value == 0 && isNotTimedOut) {
-      if (infinite) {
-        wait()
-      } else {
-        wait(timeoutMilli)
-      }
+    def timeLeft(): Long = {
+      val timeLeft = timeoutMilli - (Instant.now.toEpochMilli - start)
+      if (timeLeft < 0L) 0L else timeLeft
     }
-    if (value > 0) {
-      value -= 1
-      true
-    } else {
-      false
+
+    lock.lock()
+
+    try {
+      while (value == 0 && isNotTimedOut) {
+        if (infinite) {
+          cv.await()
+        } else {
+          cv.await(timeLeft(), TimeUnit.MILLISECONDS)
+        }
+      }
+      if (value > 0) {
+        value -= 1
+        true
+      } else {
+        false
+      }
+    } finally {
+      lock.unlock()
     }
   }
 
-  def release(): Unit = this.synchronized {
-    value += 1
-    this.notify()
+  def release(): Unit = {
+    lock.lock()
+    try {
+      value += 1
+      cv.signal()
+    } finally {
+      lock.unlock()
+    }
   }
 }

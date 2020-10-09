@@ -27,43 +27,45 @@
 package com.github.yruslan.channel
 
 import java.time.Instant
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{Executors, TimeUnit}
 
 import com.github.yruslan.channel.Channel.select
 import org.scalatest.WordSpec
 
 import scala.collection.mutable.ListBuffer
-import scala.concurrent.{Await, Future, TimeoutException}
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.{Duration, SECONDS}
+import scala.concurrent._
 
 class ChannelSuite extends WordSpec {
-  "send/recv" should {
-    "work for asychronous channels in a single threaded setup" in {
-      val channel1 = Channel.make[Int](1)
-      val channel2 = channel1
+  implicit private val ec: ExecutionContextExecutor =
+    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(20))
 
-      channel1.send(10)
-      val v = channel2.recv()
+  "send() and recv()" should {
+    "work for asynchronous channels in a single threaded setup" in {
+      val ch1 = Channel.make[Int](1)
+      val ch2 = ch1
+
+      ch1.send(10)
+      val v = ch2.recv()
 
       assert(v == 10)
     }
 
     "async sent messages should arrive in FIFO order" in {
-      val channel1 = Channel.make[Int](5)
-      val channel2 = channel1
+      val ch1 = Channel.make[Int](5)
+      val ch2 = ch1
 
-      channel1.send(1)
-      channel1.send(2)
-      channel1.send(3)
+      ch1.send(1)
+      ch1.send(2)
+      ch1.send(3)
 
-      val v1 = channel2.recv()
+      val v1 = ch2.recv()
 
-      channel1.send(4)
+      ch1.send(4)
 
-      val v2 = channel2.recv()
-      val v3 = channel2.recv()
-      val v4 = channel2.recv()
+      val v2 = ch2.recv()
+      val v3 = ch2.recv()
+      val v4 = ch2.recv()
 
       assert(v1 == 1)
       assert(v2 == 2)
@@ -72,47 +74,58 @@ class ChannelSuite extends WordSpec {
     }
 
     "closed channel can still be used to receive pending messages" in {
-      val channel = Channel.make[Int](5)
+      val ch = Channel.make[Int](5)
 
-      channel.send(1)
-      channel.send(2)
-      channel.send(3)
+      ch.send(1)
+      ch.send(2)
+      ch.send(3)
 
-      val v1 = channel.recv()
-      channel.close()
-      val v2 = channel.recv()
-      val v3 = channel.recv()
+      val v1 = ch.recv()
+      ch.close()
+      val v2 = ch.recv()
+      val v3 = ch.recv()
 
       assert(v1 == 1)
       assert(v2 == 2)
       assert(v3 == 3)
+    }
+
+    "reading a closed channel should thrown an exception" in {
+      val ch = Channel.make[Int](5)
+
+      ch.send(1)
+
+      val v1 = ch.recv()
+      ch.close()
+
+      assert(v1 == 1)
 
       val ex = intercept[IllegalStateException] {
-        channel.recv()
+        ch.recv()
       }
 
       assert(ex.getMessage.contains("Attempt to receive from a closed channel"))
 
-      val v4 = channel.tryRecv()
+      val v4 = ch.tryRecv()
       assert(v4.isEmpty)
     }
 
     "can't send to a closed channel" in {
-      val channel = Channel.make[Int](2)
+      val ch = Channel.make[Int](2)
 
-      val ok = channel.trySend(1)
+      val ok = ch.trySend(1)
       assert(ok)
 
-      channel.close()
+      ch.close()
 
       val ex = intercept[IllegalStateException] {
-        channel.send(2)
+        ch.send(2)
       }
 
       assert(ex.getMessage.contains("Attempt to send to a closed channel"))
 
-      val v1 = channel.tryRecv()
-      val v2 = channel.tryRecv()
+      val v1 = ch.tryRecv()
+      val v2 = ch.tryRecv()
 
       assert(v1.contains(1))
       assert(v2.isEmpty)
@@ -120,14 +133,14 @@ class ChannelSuite extends WordSpec {
 
     "sync send/recv should block" in {
       val start = Instant.now.toEpochMilli
-      val channel = Channel.make[Int]
+      val ch = Channel.make[Int]
 
       val f = Future {
         Thread.sleep(100)
-        channel.recv()
+        ch.recv()
       }
 
-      channel.send(100)
+      ch.send(100)
 
       val results = Await.result(f, Duration.apply(2, SECONDS))
 
@@ -136,47 +149,443 @@ class ChannelSuite extends WordSpec {
       assert(results == 100)
       assert(finish - start > 100)
     }
+  }
 
-    "select()" should {
-      "work with a single channel" in {
-        val channel = Channel.make[Int](2)
+  "trySend() for sync channels" should {
+    "handle non-blocking way" when {
+      "data is available" in {
+        val ch = Channel.make[String]
 
-        channel.send(1)
+        val ok = ch.trySend("test", Duration.Zero)
 
-        val selected = Channel.select(channel)
-
-        assert(selected == channel)
-
-        val value = channel.tryRecv()
-
-        assert(value.contains(1))
+        assert(ok)
       }
 
-      "work with two channels" in {
-        val channel1 = Channel.make[Int](1)
-        val channel2 = Channel.make[Int](1)
+      "data is not available" in {
+        val ch = Channel.make[String]
 
-        channel1.send(1)
-        channel2.send(2)
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test2", Duration.Zero)
 
-        val selected1 = Channel.select(channel1, channel2)
-        val value1 = if (selected1 == channel1) {
-          channel1.recv()
-        } else {
-          channel2.recv()
-        }
-
-        val selected2 = Channel.select(channel1, channel2)
-        val value2 = if (selected2 == channel1) {
-          channel1.recv()
-        } else {
-          channel2.recv()
-        }
-
-        assert(value1 == 1 || value1 == 2)
-        assert(value2 == 1 || value2 == 2)
-        assert(value1 != value2)
+        assert(!ok)
       }
+    }
+
+    "handle finite timeouts" when {
+      "timeout is not expired" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.recv()
+        }
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test", Duration.create(200, TimeUnit.MILLISECONDS))
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(ok)
+      }
+
+      "timeout is expired" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          Thread.sleep(100)
+          ch.recv()
+        }
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test2", Duration.create(10, TimeUnit.MILLISECONDS))
+
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(!ok)
+      }
+    }
+
+    "handle infinite timeouts" when {
+      "data is ready" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.recv()
+        }
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test", Duration.Inf)
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(ok)
+      }
+
+      "data is not ready" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          ch.trySend("test1", Duration.Zero)
+          ch.trySend("test2", Duration.Inf)
+        }
+
+        intercept[TimeoutException] {
+          Await.result(f, Duration.create(50, TimeUnit.MILLISECONDS))
+        }
+      }
+    }
+  }
+
+  "trySend() for async channels" should {
+    "handle non-blocking way" when {
+      "data is available" in {
+        val ch = Channel.make[String](1)
+
+        val ok = ch.trySend("test", Duration.Zero)
+
+        assert(ok)
+      }
+
+      "data is not available" in {
+        val ch = Channel.make[String](1)
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test2", Duration.Zero)
+
+        assert(!ok)
+      }
+    }
+
+    "handle finite timeouts" when {
+      "timeout is not expired" in {
+        val ch = Channel.make[String](1)
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.recv()
+        }
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test", Duration.create(200, TimeUnit.MILLISECONDS))
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(ok)
+      }
+
+      "timeout is expired" in {
+        val ch = Channel.make[String](1)
+
+        val f = Future {
+          Thread.sleep(100)
+          ch.recv()
+        }
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test2", Duration.create(10, TimeUnit.MILLISECONDS))
+
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(!ok)
+      }
+    }
+
+    "handle infinite timeouts" when {
+      "data is ready" in {
+        val ch = Channel.make[String](1)
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.recv()
+        }
+
+        ch.trySend("test1", Duration.Zero)
+        val ok = ch.trySend("test", Duration.Inf)
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(ok)
+      }
+
+      "data is not ready" in {
+        val ch = Channel.make[String](1)
+
+        val f = Future {
+          ch.trySend("test1", Duration.Zero)
+          ch.trySend("test2", Duration.Inf)
+        }
+
+        intercept[TimeoutException] {
+          Await.ready(f, Duration.create(50, TimeUnit.MILLISECONDS))
+        }
+      }
+    }
+  }
+
+  "tryRecv() for sync channels" should {
+    "handle non-blocking way" when {
+      "data is available" in {
+        val ch = Channel.make[String]
+
+        ch.trySend("test", Duration.Zero)
+        val v = ch.tryRecv(Duration.Zero)
+
+        assert(v.nonEmpty)
+        assert(v.contains("test"))
+      }
+
+      "data is not available" in {
+        val ch = Channel.make[String]
+
+        val v = ch.tryRecv(Duration.Zero)
+
+        assert(v.isEmpty)
+      }
+    }
+
+    "handle finite timeouts" when {
+      "timeout is not expired" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.trySend("test", Duration.Zero)
+        }
+
+        val v = ch.tryRecv(Duration.create(200, TimeUnit.MILLISECONDS))
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(v.isDefined)
+        assert(v.contains("test"))
+      }
+
+      "timeout is expired" in {
+        val ch = Channel.make[String]
+
+        val start = Instant.now()
+        val v = ch.tryRecv(Duration.create(10, TimeUnit.MILLISECONDS))
+        val finish = Instant.now()
+
+        assert(v.isEmpty)
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L )
+      }
+    }
+
+    "handle infinite timeouts" when {
+      "data is ready" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.trySend("test", Duration.Zero)
+        }
+
+        val start = Instant.now()
+        val v = ch.tryRecv(Duration.Inf)
+        val finish = Instant.now()
+
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(v.isDefined)
+        assert(v.contains("test"))
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L )
+        assert(java.time.Duration.between(start, finish).toMillis < 2000L )
+      }
+
+      "data is not ready" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          ch.tryRecv(Duration.Inf)
+        }
+
+        intercept[TimeoutException] {
+          Await.ready(f, Duration.create(50, TimeUnit.MILLISECONDS))
+        }
+      }
+    }
+  }
+
+  "tryRecv() for async channels" should {
+    "handle non-blocking way" when {
+      "data is available" in {
+        val ch = Channel.make[String](1)
+
+        ch.send("test")
+        val v = ch.tryRecv(Duration.Zero)
+
+        assert(v.nonEmpty)
+        assert(v.contains("test"))
+      }
+
+      "data is not available" in {
+        val ch = Channel.make[String](1)
+
+        val v = ch.tryRecv(Duration.Zero)
+
+        assert(v.isEmpty)
+      }
+    }
+
+    "handle finite timeouts" when {
+      "timeout is not expired" in {
+        val ch = Channel.make[String](1)
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.send("test")
+        }
+
+        val v = ch.tryRecv(Duration.create(200, TimeUnit.MILLISECONDS))
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(v.isDefined)
+        assert(v.contains("test"))
+      }
+
+      "timeout is expired" in {
+        val ch = Channel.make[String](1)
+
+        val start = Instant.now()
+        val v = ch.tryRecv(Duration.create(10, TimeUnit.MILLISECONDS))
+        val finish = Instant.now()
+
+        assert(v.isEmpty)
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L)
+      }
+    }
+
+    "handle infinite timeouts" when {
+      "data is ready" in {
+        val ch = Channel.make[String](1)
+
+        val f = Future {
+          Thread.sleep(10)
+          ch.send("test")
+        }
+
+        val start = Instant.now()
+        val v = ch.tryRecv(Duration.Inf)
+        val finish = Instant.now()
+
+        Await.result(f, Duration.apply(2, SECONDS))
+
+        assert(v.isDefined)
+        assert(v.contains("test"))
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L )
+        assert(java.time.Duration.between(start, finish).toMillis < 2000L )
+      }
+
+      "data is not ready" in {
+        val ch = Channel.make[String]
+
+        val f = Future {
+          ch.tryRecv(Duration.Inf)
+        }
+
+        intercept[TimeoutException] {
+          Await.ready(f, Duration.create(50, TimeUnit.MILLISECONDS))
+        }
+      }
+    }
+  }
+
+  "foreach()" should {
+    "handle synchronous channels" when {
+      "there is data" in {
+        val ch = Channel.make[String]
+
+        val processed = ListBuffer[String]()
+
+        ch.trySend("test", Duration.Zero)
+        ch.foreach(v => processed += v)
+
+        assert(processed.nonEmpty)
+        assert(processed.size == 1)
+        assert(processed.head == "test")
+      }
+
+      "there are no data" in {
+        val ch = Channel.make[String]
+
+        val processed = ListBuffer[String]()
+
+        ch.foreach(v => processed += v)
+
+        assert(processed.isEmpty)
+      }
+    }
+
+    "handle asynchronous channels" when {
+      "there is data" in {
+        val ch = Channel.make[String](3)
+
+        val processed = ListBuffer[String]()
+
+        ch.send("test1")
+        ch.send("test2")
+        ch.send("test3")
+
+        ch.foreach(v => processed += v)
+
+        assert(processed.nonEmpty)
+        assert(processed.size == 3)
+        assert(processed.head == "test1")
+        assert(processed(1) == "test2")
+        assert(processed(2) == "test3")
+      }
+
+      "there are no data" in {
+        val ch = Channel.make[String](3)
+
+        val processed = ListBuffer[String]()
+
+        ch.send("test1")
+        ch.recv()
+
+        ch.foreach(v => processed += v)
+
+        assert(processed.isEmpty)
+      }
+    }
+  }
+
+  "select()" should {
+    "work with a single channel" in {
+      val channel = Channel.make[Int](2)
+
+      channel.send(1)
+
+      val selected = Channel.select(channel)
+
+      assert(selected == channel)
+
+      val value = channel.tryRecv()
+
+      assert(value.contains(1))
+    }
+
+    "work with two channels" in {
+      val channel1 = Channel.make[Int](1)
+      val channel2 = Channel.make[Int](1)
+
+      channel1.send(1)
+      channel2.send(2)
+
+      val selected1 = Channel.select(channel1, channel2)
+      val value1 = if (selected1 == channel1) {
+        channel1.recv()
+      } else {
+        channel2.recv()
+      }
+
+      val selected2 = Channel.select(channel1, channel2)
+      val value2 = if (selected2 == channel1) {
+        channel1.recv()
+      } else {
+        channel2.recv()
+      }
+
+      assert(value1 == 1 || value1 == 2)
+      assert(value2 == 1 || value2 == 2)
+      assert(value1 != value2)
     }
   }
 

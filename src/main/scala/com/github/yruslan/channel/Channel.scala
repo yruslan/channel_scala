@@ -26,6 +26,8 @@
 
 package com.github.yruslan.channel
 
+import java.time.Instant
+import java.util.concurrent.{Semaphore, TimeUnit}
 import java.util.concurrent.locks.ReentrantLock
 
 import com.github.yruslan.channel.sem.TimeoutSemaphore
@@ -39,14 +41,14 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
   private var writers: Int = 0
   private var closed = false
   private val q = new mutable.Queue[T]
-  private val waiters = new ListBuffer[TimeoutSemaphore]
+  private val waiters = new ListBuffer[Semaphore]
   private var syncValue: Option[T] = None
 
   // Scala & Java monitors are designed so each object can act as a mutex and a condition variable.
   // But this makes impossible to use a single lock for more than one condition.
   // So a lock from [java.util.concurrent.locks] is used instead. It allows to have several condition
   // variables that use a single lock.
-  override private[channel] val lock = new ReentrantLock()
+  override val lock = new ReentrantLock()
   private val crd = lock.newCondition()
   private val cwr = lock.newCondition()
 
@@ -110,15 +112,96 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
         throw new IllegalStateException(s"Attempt to send to a closed channel.")
       }
       if (maxCapacity == 0) {
-        throw new IllegalStateException(s"trySend cannot be used on a sync channel.")
+        if (syncValue.isDefined) {
+          false
+        } else {
+          syncValue = Option(value)
+          notifyReaders()
+          true
+        }
+      } else {
+        if (q.size == maxCapacity) {
+          false
+        } else {
+          q.enqueue(value)
+          notifyReaders()
+          true
+        }
       }
-      if (q.size == maxCapacity) {
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  override def trySend(value: T, timeout: Duration = Duration.Zero): Boolean = {
+    if (timeout == Duration.Zero) {
+      return trySend(value)
+    }
+
+    val infinite = !timeout.isFinite()
+    val timeoutMilli = if (infinite) 0L else timeout.toMillis
+
+    val start = Instant.now.toEpochMilli
+
+    def elapsedTime(): Long = {
+      Instant.now.toEpochMilli - start
+    }
+
+    def isTimeoutExpired: Boolean = {
+      if (infinite) {
         false
       } else {
-        q.enqueue(value)
-        notifyReaders()
-        true
+        elapsedTime >= timeoutMilli
       }
+    }
+
+    def timeLeft(): Long = {
+      val timeLeft = timeoutMilli - elapsedTime()
+      if (timeLeft < 0L) 0L else timeLeft
+    }
+
+    lock.lock()
+    try {
+      writers += 1
+      val isSucceeded = if (maxCapacity == 0) {
+        // Synchronous send
+        while (syncValue.nonEmpty && !closed && !isTimeoutExpired) {
+          if (infinite) {
+            cwr.await()
+          } else {
+            cwr.await(timeLeft(), TimeUnit.MILLISECONDS)
+          }
+        }
+        syncValue match {
+          case Some(_) =>
+            false
+          case None if closed =>
+            false
+          case None =>
+            syncValue = Option(value)
+            notifyReaders()
+            true
+        }
+      } else {
+        // Asynchronous send
+        while (q.size == maxCapacity && !closed && !isTimeoutExpired) {
+          if (infinite) {
+            cwr.await()
+          } else {
+            cwr.await(timeLeft(), TimeUnit.MILLISECONDS)
+          }
+        }
+
+        if (!closed && q.size < maxCapacity) {
+          q.enqueue(value)
+          notifyReaders()
+          true
+        } else {
+          false
+        }
+      }
+      writers -= 1
+      isSucceeded
     } finally {
       lock.unlock()
     }
@@ -149,11 +232,8 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
         q.dequeue()
       }
       syncValue = None
-
       readers -= 1
-      if (readers == 0) {
-        cwr.signal()
-      }
+      cwr.signal()
       v
     } finally {
       lock.unlock()
@@ -192,6 +272,90 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
+  override def tryRecv(timeout: Duration = Duration.Zero): Option[T] = {
+    if (timeout == Duration.Zero) {
+      return tryRecv()
+    }
+
+    val infinite = !timeout.isFinite()
+    val timeoutMilli = if (infinite) 0L else timeout.toMillis
+
+    val start = Instant.now.toEpochMilli
+
+    def elapsedTime(): Long = {
+      Instant.now.toEpochMilli - start
+    }
+
+    def isTimeoutExpired: Boolean = {
+      if (infinite) {
+        false
+      } else {
+        elapsedTime >= timeoutMilli
+      }
+    }
+
+    def timeLeft(): Long = {
+      val timeLeft = timeoutMilli - elapsedTime()
+      if (timeLeft < 0L) 0L else timeLeft
+    }
+
+    lock.lock()
+    try {
+      readers += 1
+
+      val v: Option[T] = if (maxCapacity == 0) {
+        // Synchronous channel
+        while (!closed && syncValue.isEmpty && !isTimeoutExpired) {
+          if (infinite) {
+            crd.await()
+          } else {
+            crd.await(timeLeft(), TimeUnit.MILLISECONDS)
+          }
+        }
+        syncValue
+      } else {
+        // Asynchronous channel
+        while (!closed && q.isEmpty && !isTimeoutExpired) {
+          if (infinite) {
+            crd.await()
+          } else {
+            crd.await(timeLeft(), TimeUnit.MILLISECONDS)
+          }
+        }
+        if (q.isEmpty) {
+          None
+        } else {
+          Option(q.dequeue())
+        }
+      }
+
+      readers -= 1
+
+      if (v.isDefined) {
+        syncValue = None
+        cwr.signal()
+      }
+      v
+    } finally {
+      lock.unlock()
+    }
+
+  }
+
+  override def foreach(f: T => Unit): Unit = {
+    var hasData = true
+
+    while (hasData) {
+      val valueOpt = tryRecv()
+
+      valueOpt.foreach(v => f(v))
+
+      lock.lock()
+      hasData = syncValue.isDefined || q.nonEmpty
+      lock.unlock()
+    }
+  }
+
   override def isClosed: Boolean = {
     if (syncValue.nonEmpty || q.nonEmpty) {
       false
@@ -211,7 +375,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override private[channel] def addWaiter(sem: TimeoutSemaphore): Unit = {
+  override private[channel] def addWaiter(sem: Semaphore): Unit = {
     lock.lock()
     try {
       waiters += sem
@@ -220,7 +384,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override private[channel] def delWaiter(sem: TimeoutSemaphore): Unit = {
+  override private[channel] def delWaiter(sem: Semaphore): Unit = {
     lock.lock()
     try {
       val size1 = waiters.size
@@ -289,7 +453,7 @@ object Channel {
    * @return A channel that has a pending message or None, if any of the channels have a pending message.
    */
   def trySelect(timout: Duration, channel: ReadChannel[_], channels: ReadChannel[_]*): Option[ChannelLike] = {
-    val sem = new TimeoutSemaphore(0)
+    val sem = new Semaphore(0)
 
     val chans = (channel :: channels.toList).toArray
 
@@ -335,7 +499,12 @@ object Channel {
         }
         i += 1
       }
-      val success = sem.acquire(timout)
+      val success = if (timout.isFinite()) {
+        sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
+      } else {
+        sem.acquire()
+        true
+      }
       if (!success) {
         return None
       }

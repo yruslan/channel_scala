@@ -26,6 +26,7 @@
 
 package com.github.yruslan.channel
 
+import java.util.concurrent.Semaphore
 import java.util.concurrent.locks.Lock
 
 import com.github.yruslan.channel.sem.TimeoutSemaphore
@@ -33,8 +34,9 @@ import com.github.yruslan.channel.sem.TimeoutSemaphore
 trait ChannelLike {
   def isClosed: Boolean
 
+  val lock: Lock
+
   private [channel] def getBufSize: Int
-  private [channel] def addWaiter(sem: TimeoutSemaphore)
-  private [channel] def delWaiter(sem: TimeoutSemaphore)
-  private [channel] val lock: Lock
+  private [channel] def addWaiter(sem: Semaphore)
+  private [channel] def delWaiter(sem: Semaphore)
 }
