@@ -29,8 +29,6 @@ package com.github.yruslan.channel
 import java.util.concurrent.Semaphore
 import java.util.concurrent.locks.Lock
 
-import com.github.yruslan.channel.sem.TimeoutSemaphore
-
 trait ChannelLike {
   def isClosed: Boolean
 

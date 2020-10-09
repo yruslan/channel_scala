@@ -30,8 +30,6 @@ import java.time.Instant
 import java.util.concurrent.{Semaphore, TimeUnit}
 import java.util.concurrent.locks.ReentrantLock
 
-import com.github.yruslan.channel.sem.TimeoutSemaphore
-
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
