@@ -31,7 +31,7 @@ import scala.concurrent.duration.Duration
 trait WriteChannel[T] extends ChannelLike {
   def send(value: T): Unit
   def trySend(value: T): Boolean
-  def trySend(value: T, timeout: Duration = Duration.Zero): Boolean
+  def trySend(value: T, timeout: Duration): Boolean
 
   def close(): Unit
 }

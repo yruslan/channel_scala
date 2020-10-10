@@ -169,6 +169,15 @@ class ChannelSuite extends WordSpec {
 
         assert(!ok)
       }
+
+      "return false if the channel is closed" in {
+        val ch = Channel.make[Int]
+        ch.close()
+
+        val ok = ch.trySend(2)
+
+        assert(!ok)
+      }
     }
 
     "handle finite timeouts" when {
@@ -364,7 +373,7 @@ class ChannelSuite extends WordSpec {
         val finish = Instant.now()
 
         assert(v.isEmpty)
-        assert(java.time.Duration.between(start, finish).toMillis >= 10L )
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L)
       }
     }
 
@@ -385,8 +394,8 @@ class ChannelSuite extends WordSpec {
 
         assert(v.isDefined)
         assert(v.contains("test"))
-        assert(java.time.Duration.between(start, finish).toMillis >= 10L )
-        assert(java.time.Duration.between(start, finish).toMillis < 2000L )
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L)
+        assert(java.time.Duration.between(start, finish).toMillis < 2000L)
       }
 
       "data is not ready" in {
@@ -469,8 +478,8 @@ class ChannelSuite extends WordSpec {
 
         assert(v.isDefined)
         assert(v.contains("test"))
-        assert(java.time.Duration.between(start, finish).toMillis >= 10L )
-        assert(java.time.Duration.between(start, finish).toMillis < 2000L )
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L)
+        assert(java.time.Duration.between(start, finish).toMillis < 2000L)
       }
 
       "data is not ready" in {
@@ -487,7 +496,7 @@ class ChannelSuite extends WordSpec {
     }
   }
 
-  "foreach()" should {
+  "fornew()" should {
     "handle synchronous channels" when {
       "there is data" in {
         val ch = Channel.make[String]
@@ -495,7 +504,7 @@ class ChannelSuite extends WordSpec {
         val processed = ListBuffer[String]()
 
         ch.trySend("test", Duration.Zero)
-        ch.foreach(v => processed += v)
+        ch.fornew(v => processed += v)
 
         assert(processed.nonEmpty)
         assert(processed.size == 1)
@@ -507,7 +516,7 @@ class ChannelSuite extends WordSpec {
 
         val processed = ListBuffer[String]()
 
-        ch.foreach(v => processed += v)
+        ch.fornew(v => processed += v)
 
         assert(processed.isEmpty)
       }
@@ -523,7 +532,7 @@ class ChannelSuite extends WordSpec {
         ch.send("test2")
         ch.send("test3")
 
-        ch.foreach(v => processed += v)
+        ch.fornew(v => processed += v)
 
         assert(processed.nonEmpty)
         assert(processed.size == 3)
@@ -540,10 +549,44 @@ class ChannelSuite extends WordSpec {
         ch.send("test1")
         ch.recv()
 
-        ch.foreach(v => processed += v)
+        ch.fornew(v => processed += v)
 
         assert(processed.isEmpty)
       }
+    }
+  }
+
+  "foreach()" should {
+    "iterate through all values of a synchronous channel" in {
+      val ch = Channel.make[Int]
+      val values = new ListBuffer[Int]
+
+      val fut = Future {
+        ch.foreach(v => values.synchronized {
+          values += v
+        })
+      }
+
+      ch.send(1)
+      ch.send(2)
+      ch.send(3)
+      ch.close()
+
+      Await.ready(fut, Duration.create(2, TimeUnit.SECONDS))
+
+      assert(values.toList == 1 :: 2 :: 3 :: Nil)
+    }
+
+    "iterate through all values of a asynchronous channel" in {
+      val ch = Channel.make[Int](3)
+      ch.send(1)
+      ch.send(2)
+      ch.send(3)
+      ch.close()
+
+      val values = new ListBuffer[Int]
+      ch.foreach(v => values += v)
+      assert(values.toList == 1 :: 2 :: 3 :: Nil)
     }
   }
 

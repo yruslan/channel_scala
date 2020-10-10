@@ -168,6 +168,71 @@ one
 two
 ```
 
+### General pattern for select()
+Since channels can be copied back and forth netween threads, each channel can have multiple readers and writers. So
+if `sclect()` returns a channel there are no guarantees that another thread won't fetch the message before the current
+thread can receive it. 
+
+Here is an example where the worked is written so it would work correctly in case channels have multiple readers and
+writers. After a channel is selected we need to make sure to receive the message only if it still available there.
+So `tryRecv()` is used to do the non-blocking check and fetch.
+
+```scala
+import com.github.yruslan.channel.Channel
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
+import Channel._
+
+def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
+  while(!channel1.isClosed && !channel2.isClosed) {
+    select(channel1, channel2) match {
+      case ch if ch == channel1 =>
+        val msgOpt = channel1.tryRecv()
+        msgOpt.foreach(i => println(s"Int received: $i"))
+       case ch if ch == channel2 =>
+        val msgOpt = channel2.tryRecv()
+        msgOpt.foreach(s => println(s"String received: $s"))
+    }
+  }
+}
+
+val channell = Channel.make[Int]
+val channel2 = Channel.make[String]
+
+val fut = Future {
+  worker(channell, channel2)
+}
+
+channell.send(1)
+channel2.send("abc")
+channell.send(2)
+channel2.send("edef")
+channell.close()
+channel2.close()
+```
+
+Output:
+```
+Int received: 1
+String received: abc
+Int received: 2
+String received: edef
+```
+
+The boilerplate code can be simplified using `fornew()` method which invokes a lambda function for each new message
+received from the channel.
+ 
+```scala
+def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
+  while(!channel1.isClosed && !channel2.isClosed) {
+    select(channel1, channel2) match {
+      case ch if ch == channel1 => channel1.fornew( i => println(s"Int received: $i"))
+      case ch if ch == channel2 => channel2.fornew( s => println(s"String received: $s"))          }
+  }
+}
+```
+
+
 ## Reference
 
 *ToDo*

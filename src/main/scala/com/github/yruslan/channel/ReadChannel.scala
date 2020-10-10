@@ -31,7 +31,8 @@ import scala.concurrent.duration.Duration
 trait ReadChannel[T] extends ChannelLike {
   def recv(): T
   def tryRecv(): Option[T]
-  def tryRecv(timeout: Duration = Duration.Zero): Option[T]
+  def tryRecv(timeout: Duration): Option[T]
 
+  def fornew(f: T => Unit): Unit
   def foreach(f: T => Unit): Unit
 }

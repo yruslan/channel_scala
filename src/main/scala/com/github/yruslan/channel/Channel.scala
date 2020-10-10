@@ -107,23 +107,24 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     lock.lock()
     try {
       if (closed) {
-        throw new IllegalStateException(s"Attempt to send to a closed channel.")
-      }
-      if (maxCapacity == 0) {
-        if (syncValue.isDefined) {
-          false
-        } else {
-          syncValue = Option(value)
-          notifyReaders()
-          true
-        }
+        false
       } else {
-        if (q.size == maxCapacity) {
-          false
+        if (maxCapacity == 0) {
+          if (syncValue.isDefined) {
+            false
+          } else {
+            syncValue = Option(value)
+            notifyReaders()
+            true
+          }
         } else {
-          q.enqueue(value)
-          notifyReaders()
-          true
+          if (q.size == maxCapacity) {
+            false
+          } else {
+            q.enqueue(value)
+            notifyReaders()
+            true
+          }
         }
       }
     } finally {
@@ -131,7 +132,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override def trySend(value: T, timeout: Duration = Duration.Zero): Boolean = {
+  override def trySend(value: T, timeout: Duration): Boolean = {
     if (timeout == Duration.Zero) {
       return trySend(value)
     }
@@ -270,7 +271,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override def tryRecv(timeout: Duration = Duration.Zero): Option[T] = {
+  override def tryRecv(timeout: Duration): Option[T] = {
     if (timeout == Duration.Zero) {
       return tryRecv()
     }
@@ -300,47 +301,24 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     lock.lock()
     try {
       readers += 1
-
-      val v: Option[T] = if (maxCapacity == 0) {
-        // Synchronous channel
-        while (!closed && syncValue.isEmpty && !isTimeoutExpired) {
-          if (infinite) {
-            crd.await()
-          } else {
-            crd.await(timeLeft(), TimeUnit.MILLISECONDS)
-          }
-        }
-        syncValue
-      } else {
-        // Asynchronous channel
-        while (!closed && q.isEmpty && !isTimeoutExpired) {
-          if (infinite) {
-            crd.await()
-          } else {
-            crd.await(timeLeft(), TimeUnit.MILLISECONDS)
-          }
-        }
-        if (q.isEmpty) {
-          None
+      while (!closed && syncValue.isEmpty && q.isEmpty && !isTimeoutExpired) {
+        if (infinite) {
+          crd.await()
         } else {
-          Option(q.dequeue())
+          crd.await(timeLeft(), TimeUnit.MILLISECONDS)
         }
       }
-
       readers -= 1
 
-      if (v.isDefined) {
-        syncValue = None
-        cwr.signal()
-      }
-      v
+
+      fetchValueOpt()
     } finally {
       lock.unlock()
     }
 
   }
 
-  override def foreach(f: T => Unit): Unit = {
+  override def fornew(f: T => Unit): Unit = {
     var hasData = true
 
     while (hasData) {
@@ -351,6 +329,22 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
       lock.lock()
       hasData = syncValue.isDefined || q.nonEmpty
       lock.unlock()
+    }
+  }
+
+  override def foreach(f: T => Unit): Unit = {
+    while (!isClosed) {
+      lock.lock()
+      readers += 1
+      while (!isClosed && syncValue.isEmpty && q.isEmpty) {
+        crd.await()
+      }
+      readers -= 1
+
+      val valOpt = fetchValueOpt()
+      lock.unlock()
+
+      valOpt.foreach(f)
     }
   }
 
@@ -402,6 +396,24 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     } else {
       if (waiters.nonEmpty) {
         waiters.head.release()
+      }
+    }
+  }
+
+  private def fetchValueOpt(): Option[T] = {
+    if (maxCapacity == 0) {
+      if (syncValue.nonEmpty) {
+        cwr.signal()
+      }
+      val v = syncValue
+      syncValue = None
+      v
+    } else {
+      if (q.isEmpty) {
+        None
+      } else {
+        cwr.signal()
+        Option(q.dequeue())
       }
     }
   }
