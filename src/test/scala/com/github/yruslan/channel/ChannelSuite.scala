@@ -171,7 +171,7 @@ class ChannelSuite extends WordSpec {
     }
 
     "sync send/recv should block" in {
-      val start = Instant.now.toEpochMilli
+      val start = Instant.now
       val ch = Channel.make[Int]
 
       val f = Future {
@@ -183,10 +183,10 @@ class ChannelSuite extends WordSpec {
 
       val results = Await.result(f, Duration.apply(2, SECONDS))
 
-      val finish = Instant.now.toEpochMilli
+      val finish = Instant.now
 
       assert(results == 100)
-      assert(finish - start > 100)
+      assert(java.time.Duration.between(start, finish).toMillis >= 100L)
     }
   }
 
@@ -706,7 +706,7 @@ class ChannelSuite extends WordSpec {
 
         channel.send(1)
 
-        val selected = Channel.trySelect(Duration.Zero, channel)
+        val selected = Channel.trySelect(channel)
 
         assert(selected.contains(channel))
       }
@@ -714,7 +714,7 @@ class ChannelSuite extends WordSpec {
       "when data is not available" in {
         val channel = Channel.make[Int](1)
 
-        val selected = Channel.trySelect(Duration.Zero, channel)
+        val selected = Channel.trySelect(channel)
 
         assert(selected.isEmpty)
       }

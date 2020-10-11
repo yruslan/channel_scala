@@ -461,8 +461,20 @@ object Channel {
   }
 
   /**
-   * Waits to receive a message from any of the channels for a specified amout of time.
+   * Non-blocking check for a pending messages in multiple channels.
    *
+   * @param channel  A first channel to wait for (mandatory).
+   * @param channels Other channels to wait for.
+   * @return A channel that has a pending message or None, if any of the channels have a pending message.
+   */
+  def trySelect(channel: ReadChannel[_], channels: ReadChannel[_]*): Option[ChannelLike] = {
+    trySelect(Duration.Zero, channel, channels: _*)
+  }
+
+  /**
+   * Waits to receive a message from any of the channels for a specified amount of time.
+   *
+   * @param timout   A timeout to wait for pending messages.
    * @param channel  A first channel to wait for (mandatory).
    * @param channels Other channels to wait for.
    * @return A channel that has a pending message or None, if any of the channels have a pending message.
