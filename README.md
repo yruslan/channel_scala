@@ -131,6 +131,67 @@ Output:
 message
 ```
 
+### Closing channels
+Channels can be closed which prevents sending more messages to it. It can be checked by consumers to determine when
+the processing has finished.
+
+```scala
+val ch = Channel.make[Int](5)
+
+ch.send(1)
+ch.send(2)
+ch.send(3)
+ch.close()
+
+while (!ch.isClosed) {
+  println(ch.recv())
+}
+```
+
+Output:
+```
+1
+2
+3
+```
+
+### Iterate over channels
+You can iterate over a channel using `foreach()`. Several threads can do the same. Each thread will receive only one
+copy of the sent message. Be careful, `foreach()` is blocking and will exit only when the channel is closed. If you
+forget to close a channel, the foreach loop will block the thread.
+
+Here is an example how a stream of tasks can be processed in parallel by 2 workers using `foreach()`.   
+
+```scala
+Future {
+  ch.foreach(v => {
+    println(s"Worker 1 received $v")
+    Thread.sleep(500) // Simulate processing
+  })
+}
+
+Future {
+  ch.foreach(v => {
+    println(s"Worker 2 received $v")
+    Thread.sleep(600) // Simulate processing
+  })
+}
+
+ch.send(1)
+ch.send(2)
+ch.send(3)
+ch.send(4)
+ch.close()
+```
+
+Output:
+```
+Worker 1 received 1
+Worker 2 received 2
+Worker 1 received 3
+Worker 2 received 4
+```
+
 ### Select
 
 What makes channels great is that a program can wait for events in several channels at the same time.
@@ -168,12 +229,55 @@ one
 two
 ```
 
+### Non-blocking methods
+Go supports non-blocking channel operation by the elegant `default` clause in the `select` statement. The scala port
+adds separate methods that support non-blocking operations: `trySend()`, `tryRecv` and `trySelect`. There is an
+optional timeout parameter for each of these methods. If it is not specified, all methods return immediately without
+any waiting. If the timeout is specified the methods will wait the specified amount of time if the expected conditions
+are not met. Timeout can be set to `Duration.Inf`. In this case these methods are equivalent to their blocking variants
+with the exception of the type of returned value.
+
+* `trySend()` returns a boolean. If `true`, the message has been sent successfully, otherwise it is failed for whatever
+   reason (maybe the channel was closed or the buffer is full).
+* `tryRecs()` returns a optional value. If there are no pending messages the method returns `None`.
+* `trySelect()` returns a optional channel. If there are no pending messages the method returns `None`.
+
+Here is an example of non-blocking methods:
+```scala
+val ch1 = Channel.make[Int]
+val ch2 = Channel.make[String](1)
+
+var ok = ch1.trySend(1)
+println(s"msg1 -> channel1: $ok")
+
+ok = ch1.trySend(2)
+println(s"msg2 -> channel1: $ok")
+
+val msg1 = ch1.tryRecv()
+println(s"msg1 <- channel1: $msg1")
+
+val msg2 = ch1.tryRecv()
+println(s"msg2 <- channel1: $msg2")
+
+val s = Channel.trySelect(ch1, ch2)
+println(s"selected: $s")
+```
+
+Output:
+```
+msg1 -> channel1: true
+msg2 -> channel1: false
+msg1 <- channel1: Some(1)
+msg2 <- channel1: None
+selected: None
+```
+
 ### General pattern for select()
 Since channels can be copied back and forth netween threads, each channel can have multiple readers and writers. So
 if `sclect()` returns a channel there are no guarantees that another thread won't fetch the message before the current
 thread can receive it. 
 
-Here is an example where the worked is written so it would work correctly in case channels have multiple readers and
+Here is an example where the worker is written so it would work correctly in case channels have multiple readers and
 writers. After a channel is selected we need to make sure to receive the message only if it still available there.
 So `tryRecv()` is used to do the non-blocking check and fetch.
 
@@ -231,7 +335,6 @@ def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
   }
 }
 ```
-
 
 ## Reference
 
