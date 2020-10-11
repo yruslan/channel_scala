@@ -58,6 +58,11 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
         waiters.foreach(w => w.release())
         crd.signalAll()
         cwr.signalAll()
+        if (maxCapacity == 0) {
+          while (syncValue.nonEmpty) {
+            cwr.await()
+          }
+        }
       }
     } finally {
       lock.unlock()

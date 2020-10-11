@@ -90,6 +90,45 @@ class ChannelSuite extends WordSpec {
       assert(v3 == 3)
     }
 
+    "closing a synchronous channel should block if the pending message is not received" in {
+      val ch = Channel.make[Int]
+
+      ch.trySend(1)
+
+      val f = Future {
+        ch.close()
+      }
+
+      intercept[TimeoutException] {
+        Await.result(f, Duration.create(50, TimeUnit.MILLISECONDS))
+      }
+    }
+
+    "closing a synchronous channel should block until the pending message is not received" in {
+      val start = Instant.now()
+      val ch = Channel.make[Int]
+      var v: Option[Int] = None
+
+      ch.trySend(1)
+
+      val f1 = Future {
+        Thread.sleep(50L)
+        v = Option(ch.recv())
+      }
+
+      val f2 = Future {
+        ch.close()
+      }
+
+      Await.result(f2, Duration.create(2, TimeUnit.SECONDS))
+      val finish = Instant.now()
+
+      assert(v.nonEmpty)
+      assert(v.contains(1))
+      assert(java.time.Duration.between(start, finish).toMillis >= 50L)
+      assert(java.time.Duration.between(start, finish).toMillis < 2000L)
+    }
+
     "reading a closed channel should thrown an exception" in {
       val ch = Channel.make[Int](5)
 
@@ -782,5 +821,4 @@ class ChannelSuite extends WordSpec {
       assert(results.size == 6)
     }
   }
-
 }
