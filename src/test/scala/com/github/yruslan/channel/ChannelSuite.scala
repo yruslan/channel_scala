@@ -29,6 +29,9 @@ package com.github.yruslan.channel
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
+// This import is required for Scala 2.13 since it has a builtin Channel object.
+import com.github.yruslan.channel.Channel
+
 import com.github.yruslan.channel.Channel.select
 import org.scalatest.WordSpec
 

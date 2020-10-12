@@ -142,7 +142,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
       return trySend(value)
     }
 
-    val infinite = !timeout.isFinite()
+    val infinite = !timeout.isFinite
     val timeoutMilli = if (infinite) 0L else timeout.toMillis
 
     val start = Instant.now.toEpochMilli
@@ -281,7 +281,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
       return tryRecv()
     }
 
-    val infinite = !timeout.isFinite()
+    val infinite = !timeout.isFinite
     val timeoutMilli = if (infinite) 0L else timeout.toMillis
 
     val start = Instant.now.toEpochMilli
@@ -526,7 +526,7 @@ object Channel {
         }
         i += 1
       }
-      val success = if (timout.isFinite()) {
+      val success = if (timout.isFinite) {
         sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
       } else {
         sem.acquire()

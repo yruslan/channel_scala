@@ -17,7 +17,7 @@
         <scala.version>2.11.8</scala.version>
         <scala.compat.version>2.11</scala.compat.version>
         <specs.version>2.4.16</specs.version>
-        <scalatest.version>3.0.1</scalatest.version>
+        <scalatest.version>3.1.4</scalatest.version>
         <scalatest.maven.version>1.0</scalatest.maven.version>
     </properties>
 

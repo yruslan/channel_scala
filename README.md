@@ -1,12 +1,26 @@
 # Channel - a port of GoLang channels to Scala 
 
-This is one of Scala ports of GoLang channels. The idea of this particular port is to match as much as possible the features
+> Go channels provide synchronization and messaging, 'select' provides multi-way concurrent control.
+> 
+> _Rob Pike_ - [Concurrency is not parallelism](https://www.youtube.com/watch?v=oV9rvDllKEg)
+
+This is one of Scala ports of Go channels. The idea of this particular port is to match as much as possible the features
 provided by GoLang so channels can be used for concurrency coordination. The library uses locks, conditional variables and
 semaphores as underlying concurrency primitives so the performance is not expected to match applications written in Go.
 
 ## Link
 
 *The library hasn't been released yet.*
+
+## Motivation
+Scala provides channels as a part of the standard library (https://www.scala-lang.org/api/2.13.0/scala/concurrent/Channel.html).
+However, the real power of channels comes from `select()`.
+
+Scala promotes Actor model as a way of handling concurrency which is based on works of Carl Hewitt (1973). Channels
+are based on CSP model by Tony Hoare (1978). At first glance these models are similar, but they are in fact very different.
+Good deescripton on the differences are explained here: https://stackoverflow.com/a/22622880/1038282
+
+CSP channels provide an extremely simple and uniform building block for designing concurrent applications.  
 
 ## Usage
 
