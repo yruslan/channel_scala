@@ -3,6 +3,7 @@
 > Go channels provide synchronization and messaging, 'select' provides multi-way concurrent control.
 > 
 > _Rob Pike_ - [Concurrency is not parallelism](https://www.youtube.com/watch?v=oV9rvDllKEg)
+/ [another link with better slide view](https://www.youtube.com/watch?v=qmg1CF3gZQ0)
 
 This is one of Scala ports of Go channels. The idea of this particular port is to match as much as possible the features
 provided by GoLang so channels can be used for concurrency coordination. The library uses locks, conditional variables and
