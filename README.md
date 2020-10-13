@@ -233,8 +233,8 @@ Future {
 
 for (_ <- Range(0, 2)) {
   Channel.select(channel1, channel2) match {
-    case c if c == channel1 => println(channel1.recv())
-    case c if c == channel2 => println(channel2.recv())
+    case `channel1` => println(channel1.recv())
+    case `channel2` => println(channel2.recv())
   }
 }
 ```
@@ -305,10 +305,10 @@ import Channel._
 def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
   while(!channel1.isClosed && !channel2.isClosed) {
     select(channel1, channel2) match {
-      case ch if ch == channel1 =>
+      case `channel1` =>
         val msgOpt = channel1.tryRecv()
         msgOpt.foreach(i => println(s"Int received: $i"))
-       case ch if ch == channel2 =>
+      case `channel2` =>
         val msgOpt = channel2.tryRecv()
         msgOpt.foreach(s => println(s"String received: $s"))
     }
@@ -345,8 +345,8 @@ received from the channel.
 def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
   while(!channel1.isClosed && !channel2.isClosed) {
     select(channel1, channel2) match {
-      case ch if ch == channel1 => channel1.fornew( i => println(s"Int received: $i"))
-      case ch if ch == channel2 => channel2.fornew( s => println(s"String received: $s"))          }
+      case `channel1` => channel1.fornew( i => println(s"Int received: $i"))
+      case `channel2` => channel2.fornew( s => println(s"String received: $s"))          }
   }
 }
 ```
