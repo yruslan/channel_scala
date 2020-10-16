@@ -32,8 +32,7 @@ import java.util.concurrent.locks.Lock
 trait ChannelLike {
   def isClosed: Boolean
 
-  val lock: Lock
-
+  private [channel] val lock: Lock
   private [channel] def getBufSize: Int
   private [channel] def addWaiter(sem: Semaphore)
   private [channel] def delWaiter(sem: Semaphore)
