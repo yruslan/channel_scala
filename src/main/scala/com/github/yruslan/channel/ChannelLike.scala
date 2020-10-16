@@ -34,6 +34,6 @@ trait ChannelLike {
 
   private [channel] val lock: Lock
   private [channel] def getBufSize: Int
-  private [channel] def addWaiter(sem: Semaphore)
+  private [channel] def ifEmptyAddWaiter(sem: Semaphore): Boolean
   private [channel] def delWaiter(sem: Semaphore)
 }

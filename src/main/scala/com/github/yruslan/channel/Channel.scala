@@ -372,10 +372,15 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override private[channel] def addWaiter(sem: Semaphore): Unit = {
+  override private[channel] def ifEmptyAddWaiter(sem: Semaphore): Boolean = {
     lock.lock()
     try {
-      waiters += sem
+      if (closed || syncValue.isDefined || q.nonEmpty) {
+        false
+      } else {
+        waiters += sem
+        true
+      }
     } finally {
       lock.unlock()
     }
@@ -488,19 +493,13 @@ object Channel {
     var i = 0
     while (i < chans.length) {
       val ch = chans(i)
-      ch.lock.lock()
-      try {
-        if (ch.getBufSize > 0 || ch.isClosed) {
-          var j = 0
-          while (j < i) {
-            chans(j).delWaiter(sem)
-            j += 1
-          }
-          return Option(ch)
+      if (!ch.ifEmptyAddWaiter(sem)) {
+        var j = 0
+        while (j < i) {
+          chans(j).delWaiter(sem)
+          j += 1
         }
-        ch.addWaiter(sem)
-      } finally {
-        ch.lock.unlock()
+        return Option(ch)
       }
       i += 1
     }
