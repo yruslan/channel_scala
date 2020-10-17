@@ -30,6 +30,8 @@ import java.time.Instant
 import java.util.concurrent.{Semaphore, TimeUnit}
 import java.util.concurrent.locks.ReentrantLock
 
+import com.github.yruslan.channel.impl.SimpleLinkedList
+
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
@@ -39,7 +41,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
   private var writers: Int = 0
   private var closed = false
   private val q = new mutable.Queue[T]
-  private val waiters = new ListBuffer[Semaphore]
+  private val waiters = new SimpleLinkedList[Semaphore]
   private var syncValue: Option[T] = None
 
   // Scala & Java monitors are designed so each object can act as a mutex and a condition variable.
@@ -378,7 +380,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
       if (closed || syncValue.isDefined || q.nonEmpty) {
         false
       } else {
-        waiters += sem
+        waiters.append(sem)
         true
       }
     } finally {
@@ -390,7 +392,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     lock.lock()
     try {
       val size1 = waiters.size
-      waiters --= waiters.filter(_ eq sem)
+      waiters.remove(sem)
       val size2 = waiters.size
       if (size1 != size2 + 1) {
         throw new IllegalStateException(s"Could not find the waiter semaphore.")
@@ -404,8 +406,8 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     if (readers > 0) {
       crd.signal()
     } else {
-      if (waiters.nonEmpty) {
-        waiters.head.release()
+      if (!waiters.isEmpty) {
+        waiters.returnHeadAndRotate().release()
       }
     }
   }
@@ -532,6 +534,11 @@ object Channel {
         true
       }
       if (!success) {
+        var j = 0
+        while (j < chans.length) {
+          chans(j).delWaiter(sem)
+          j += 1
+        }
         return None
       }
     }

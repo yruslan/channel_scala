@@ -29,17 +29,18 @@ package com.github.yruslan.channel
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
+import org.scalatest.wordspec.AnyWordSpec
+
 // This import is required for Scala 2.13 since it has a builtin Channel object.
 import com.github.yruslan.channel.Channel
 
 import com.github.yruslan.channel.Channel.select
-import org.scalatest.WordSpec
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.{Duration, SECONDS}
 import scala.concurrent._
 
-class ChannelSuite extends WordSpec {
+class ChannelSuite extends AnyWordSpec {
   implicit private val ec: ExecutionContextExecutor =
     ExecutionContext.fromExecutor(Executors.newFixedThreadPool(20))
 
@@ -824,4 +825,5 @@ class ChannelSuite extends WordSpec {
       assert(results.size == 6)
     }
   }
+
 }
