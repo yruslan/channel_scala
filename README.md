@@ -338,8 +338,9 @@ Int received: 2
 String received: edef
 ```
 
-The boilerplate code can be simplified using `fornew()` method which invokes a lambda function for each new message
-received from the channel.
+The boilerplate code can be simplified using `fornew()` method which invokes a lambda function for a new message
+received from the channel. The function will be invoked without channel holding any locks, so it can take as long
+as needed to process the message.
  
 ```scala
 def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {

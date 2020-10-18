@@ -578,10 +578,8 @@ class ChannelSuite extends AnyWordSpec {
         ch.fornew(v => processed += v)
 
         assert(processed.nonEmpty)
-        assert(processed.size == 3)
+        assert(processed.size == 1)
         assert(processed.head == "test1")
-        assert(processed(1) == "test2")
-        assert(processed(2) == "test3")
       }
 
       "there are no data" in {
@@ -823,6 +821,35 @@ class ChannelSuite extends AnyWordSpec {
       Await.result(worked2Fut, Duration.apply(4, SECONDS))
 
       assert(results.size == 6)
+    }
+
+    "handle a situation when one worked doen't handle a received message" in {
+      val channel1 = Channel.make[String](3)
+      val results = new ListBuffer[String]
+      val start = Instant.now
+
+      Future {
+        select(channel1)
+      }
+
+      val worked2Fut = Future {
+        while (!channel1.isClosed) {
+          select(channel1)
+          channel1.fornew(s => results += s)
+        }
+      }
+
+      Thread.sleep(20)
+      channel1.send("a")
+      channel1.send("b")
+      channel1.send("c")
+      channel1.close
+
+      Await.result(worked2Fut, Duration.apply(2, SECONDS))
+      val finish = Instant.now
+
+      assert(results.toList == "a" :: "b" :: "c" :: Nil)
+      assert(java.time.Duration.between(start, finish).toMillis < 2000L)
     }
   }
 

@@ -326,17 +326,8 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
   }
 
   override def fornew(f: T => Unit): Unit = {
-    var hasData = true
-
-    while (hasData) {
-      val valueOpt = tryRecv()
-
-      valueOpt.foreach(v => f(v))
-
-      lock.lock()
-      hasData = syncValue.isDefined || q.nonEmpty
-      lock.unlock()
-    }
+    val valueOpt = tryRecv()
+    valueOpt.foreach(v => f(v))
   }
 
   override def foreach(f: T => Unit): Unit = {
