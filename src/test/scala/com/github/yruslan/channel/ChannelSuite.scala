@@ -42,7 +42,7 @@ import scala.concurrent._
 
 class ChannelSuite extends AnyWordSpec {
   implicit private val ec: ExecutionContextExecutor =
-    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(20))
+    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(12))
 
   "send() and recv()" should {
     "work for asynchronous channels in a single threaded setup" in {
@@ -753,11 +753,11 @@ class ChannelSuite extends AnyWordSpec {
     def worker2(workerNum: Int, results: ListBuffer[String], channell: Channel[Int], channel2: Channel[String]): Unit = {
       while (!channell.isClosed && !channel2.isClosed) {
         select(channell, channel2) match {
-          case ch1 if ch1 == channell =>
+          case `channell` =>
             channell.tryRecv().foreach(v => results.synchronized {
               results += s"$workerNum->i$v"
             })
-          case ch2 if ch2 == channel2 =>
+          case `channel2` =>
             channel2.tryRecv().foreach(v => results.synchronized {
               results += s"$workerNum->s$v"
             })
@@ -843,7 +843,7 @@ class ChannelSuite extends AnyWordSpec {
       channel1.send("a")
       channel1.send("b")
       channel1.send("c")
-      channel1.close
+      channel1.close()
 
       Await.result(worked2Fut, Duration.apply(2, SECONDS))
       val finish = Instant.now

@@ -33,7 +33,6 @@ import java.util.concurrent.locks.ReentrantLock
 import com.github.yruslan.channel.impl.SimpleLinkedList
 
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 
 class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[T] {
@@ -48,7 +47,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
   // But this makes impossible to use a single lock for more than one condition.
   // So a lock from [java.util.concurrent.locks] is used instead. It allows to have several condition
   // variables that use a single lock.
-  override val lock = new ReentrantLock()
+  private val lock = new ReentrantLock()
   private val crd = lock.newCondition()
   private val cwr = lock.newCondition()
 
@@ -354,15 +353,11 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override private[channel] def getBufSize: Int = {
-    if (maxCapacity > 0) {
-      q.size
-    } else {
-      syncValue match {
-        case Some(_) => 1
-        case None => 0
-      }
-    }
+  override private[channel] def hasMessagesOrClosed: Boolean = {
+    lock.lock()
+    val ret = closed || syncValue.isDefined || q.nonEmpty
+    lock.unlock()
+    ret
   }
 
   override private[channel] def ifEmptyAddWaiter(sem: Semaphore): Boolean = {
@@ -480,7 +475,8 @@ object Channel {
   def trySelect(timout: Duration, channel: ReadChannel[_], channels: ReadChannel[_]*): Option[ChannelLike] = {
     val sem = new Semaphore(0)
 
-    val chans = (channel :: channels.toList).toArray
+    // If several channels have pending messages, select randomly the channel to return
+    val chans = scala.util.Random.shuffle(channel :: channels.toList).toArray
 
     // Add waiters
     var i = 0
@@ -502,19 +498,13 @@ object Channel {
       i = 0
       while (i < chans.length) {
         val ch = chans(i)
-        val lock = ch.lock
-        lock.lock()
-        try {
-          if (ch.getBufSize > 0 || ch.isClosed) {
-            var j = 0
-            while (j < chans.length) {
-              chans(j).delWaiter(sem)
-              j += 1
-            }
-            return Option(ch)
+        if (ch.hasMessagesOrClosed) {
+          var j = 0
+          while (j < chans.length) {
+            chans(j).delWaiter(sem)
+            j += 1
           }
-        } finally {
-          lock.unlock()
+          return Option(ch)
         }
         i += 1
       }
