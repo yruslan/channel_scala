@@ -30,7 +30,7 @@ import java.time.Instant
 import java.util.concurrent.{Semaphore, TimeUnit}
 import java.util.concurrent.locks.ReentrantLock
 
-import com.github.yruslan.channel.impl.SimpleLinkedList
+import com.github.yruslan.channel.impl.{Selector, SimpleLinkedList}
 
 import scala.collection.mutable
 import scala.concurrent.duration.Duration
@@ -40,7 +40,8 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
   private var writers: Int = 0
   private var closed = false
   private val q = new mutable.Queue[T]
-  private val waiters = new SimpleLinkedList[Semaphore]
+  private val readWaiters = new SimpleLinkedList[Semaphore]
+  private val writeWaiters = new SimpleLinkedList[Semaphore]
   private var syncValue: Option[T] = None
 
   // Scala & Java monitors are designed so each object can act as a mutex and a condition variable.
@@ -56,13 +57,16 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     try {
       if (!closed) {
         closed = true
-        waiters.foreach(w => w.release())
+        readWaiters.foreach(w => w.release())
+        writeWaiters.foreach(w => w.release())
         crd.signalAll()
         cwr.signalAll()
         if (maxCapacity == 0) {
+          writers += 1
           while (syncValue.nonEmpty) {
             cwr.await()
           }
+          writers -= 1
         }
       }
     } finally {
@@ -90,7 +94,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
           while (syncValue.nonEmpty && !closed) {
             cwr.await()
           }
-          cwr.signal()
+          notifyWriters()
         }
       } else {
         // Asynchronous send
@@ -238,7 +242,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
       }
       syncValue = None
       readers -= 1
-      cwr.signal()
+      notifyWriters()
       v
     } finally {
       lock.unlock()
@@ -258,7 +262,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
           } else {
             val v = syncValue
             syncValue = None
-            cwr.signal()
+            notifyWriters()
             v
           }
         } else {
@@ -267,7 +271,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
             None
           } else {
             val v = q.dequeue()
-            cwr.signal()
+            notifyWriters()
             Option(v)
           }
         }
@@ -353,20 +357,49 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
+  override def sender(value: T, action: => Unit = {}): Selector = {
+    new Selector(true, this) {
+      override def sendRecv(): Boolean = trySend(value)
+
+      override def afterAction(): Unit = action
+    }
+  }
+
+  override def recver(action: T => Unit): Selector = {
+    new Selector(false, this) {
+      var el: T = _
+
+      override def sendRecv(): Boolean = {
+        val opt = tryRecv()
+        opt.foreach(v => el = v)
+        opt.isDefined
+      }
+
+      override def afterAction(): Unit = action(el)
+    }
+  }
+
   override private[channel] def hasMessagesOrClosed: Boolean = {
     lock.lock()
-    val ret = closed || syncValue.isDefined || q.nonEmpty
+    val ret = closed || hasMessages
     lock.unlock()
     ret
   }
 
-  override private[channel] def ifEmptyAddWaiter(sem: Semaphore): Boolean = {
+  override private[channel] def hasFreeCapacityOrClosed: Boolean = {
+    lock.lock()
+    val ret = closed || hasCapacity
+    lock.unlock()
+    ret
+  }
+
+  override private[channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = {
     lock.lock()
     try {
-      if (closed || syncValue.isDefined || q.nonEmpty) {
+      if (closed || hasMessages) {
         false
       } else {
-        waiters.append(sem)
+        readWaiters.append(sem)
         true
       }
     } finally {
@@ -374,15 +407,33 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     }
   }
 
-  override private[channel] def delWaiter(sem: Semaphore): Unit = {
+  override private[channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = {
     lock.lock()
     try {
-      val size1 = waiters.size
-      waiters.remove(sem)
-      val size2 = waiters.size
-      if (size1 != size2 + 1) {
-        throw new IllegalStateException(s"Could not find the waiter semaphore.")
+      if (closed || hasCapacity) {
+        false
+      } else {
+        writeWaiters.append(sem)
+        true
       }
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  override private[channel] def delReaderWaiter(sem: Semaphore): Unit = {
+    lock.lock()
+    try {
+      readWaiters.remove(sem)
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  override private[channel] def delWriterWaiter(sem: Semaphore): Unit = {
+    lock.lock()
+    try {
+      writeWaiters.remove(sem)
     } finally {
       lock.unlock()
     }
@@ -392,8 +443,18 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
     if (readers > 0) {
       crd.signal()
     } else {
-      if (!waiters.isEmpty) {
-        waiters.returnHeadAndRotate().release()
+      if (!readWaiters.isEmpty) {
+        readWaiters.returnHeadAndRotate().release()
+      }
+    }
+  }
+
+  private def notifyWriters(): Unit = {
+    if (writers > 0) {
+      cwr.signal()
+    } else {
+      if (!writeWaiters.isEmpty) {
+        writeWaiters.returnHeadAndRotate().release()
       }
     }
   }
@@ -401,7 +462,7 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
   private def fetchValueOpt(): Option[T] = {
     if (maxCapacity == 0) {
       if (syncValue.nonEmpty) {
-        cwr.signal()
+        notifyWriters()
       }
       val v = syncValue
       syncValue = None
@@ -410,10 +471,28 @@ class Channel[T](val maxCapacity: Int) extends ReadChannel[T] with WriteChannel[
       if (q.isEmpty) {
         None
       } else {
-        cwr.signal()
+        notifyWriters()
         Option(q.dequeue())
       }
     }
+  }
+
+  private def hasCapacity: Boolean = {
+    val canWrite = if (maxCapacity == 0) {
+      syncValue.isEmpty
+    } else {
+      q.size < maxCapacity
+    }
+    canWrite
+  }
+
+  private def hasMessages: Boolean = {
+    val canRead = if (maxCapacity == 0) {
+      syncValue.isDefined
+    } else {
+      q.nonEmpty
+    }
+    canRead
   }
 }
 
@@ -482,10 +561,10 @@ object Channel {
     var i = 0
     while (i < chans.length) {
       val ch = chans(i)
-      if (!ch.ifEmptyAddWaiter(sem)) {
+      if (!ch.ifEmptyAddReaderWaiter(sem)) {
         var j = 0
         while (j < i) {
-          chans(j).delWaiter(sem)
+          chans(j).delReaderWaiter(sem)
           j += 1
         }
         return Option(ch)
@@ -501,7 +580,7 @@ object Channel {
         if (ch.hasMessagesOrClosed) {
           var j = 0
           while (j < chans.length) {
-            chans(j).delWaiter(sem)
+            chans(j).delReaderWaiter(sem)
             j += 1
           }
           return Option(ch)
@@ -517,10 +596,131 @@ object Channel {
       if (!success) {
         var j = 0
         while (j < chans.length) {
-          chans(j).delWaiter(sem)
+          chans(j).delReaderWaiter(sem)
           j += 1
         }
         return None
+      }
+    }
+    // This never happens since the method can only exit on other return paths
+    null
+  }
+
+
+  /**
+   * Waits for a non-blocking operation to be available on the list of channels.
+   *
+   * @param selector  A first channel to wait for (mandatory).
+   * @param selectors Other channels to wait for.
+   * @return A channel that has a pending message.
+   */
+  def selectNew(selector: Selector, selectors: Selector*): ChannelLike = {
+    trySelectNew(Duration.Inf, selector, selectors: _*).get
+  }
+
+  /**
+   * Non-blocking check for a possibility of a non-blocking operation on several channels.
+   *
+   * @param selector  A first channel to wait for (mandatory).
+   * @param selectors Other channels to wait for.
+   * @return A channel that has a pending message or None, if any of the channels have a pending message.
+   */
+  def trySelectNew(selector: Selector, selectors: Selector*): Option[ChannelLike] = {
+    trySelectNew(Duration.Zero, selector, selectors: _*)
+  }
+
+
+  /**
+   * Waits for a non-bloaking action to be available.
+   *
+   * @param timout    A timeout to wait for a non-blocking action to be available.
+   * @param selector  A first channel to wait for (mandatory).
+   * @param selectors Other channels to wait for.
+   * @return A channel that has a pending message.
+   */
+  def trySelectNew(timout: Duration, selector: Selector, selectors: Selector*): Option[ChannelLike] = {
+    val sem = new Semaphore(0)
+
+    // If several channels have pending messages, select randomly the channel to return
+    val sel = scala.util.Random.shuffle(selector :: selectors.toList).toArray
+
+    // Add waiters
+    var i = 0
+    while (i < sel.length) {
+      val s = sel(i)
+      val blocking = if (s.isSender) {
+        s.channel.ifFullAddWriterWaiter(sem)
+      } else {
+        s.channel.ifEmptyAddReaderWaiter(sem)
+      }
+      if (!blocking) {
+        if (s.sendRecv()) {
+          s.afterAction()
+        }
+        var j = 0
+        while (j < i) {
+          if (sel(j).isSender) {
+            sel(j).channel.delWriterWaiter(sem)
+          } else {
+            sel(j).channel.delReaderWaiter(sem)
+          }
+          j += 1
+        }
+        return Option(s.channel)
+      }
+      i += 1
+    }
+
+    while (true) {
+      val success = if (timout.isFinite) {
+        sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
+      } else {
+        sem.acquire()
+        true
+      }
+      if (!success) {
+        var j = 0
+        while (j < sel.length) {
+          if (sel(j).isSender) {
+            sel(j).channel.delWriterWaiter(sem)
+          } else {
+            sel(j).channel.delReaderWaiter(sem)
+          }
+          j += 1
+        }
+        return None
+      }
+
+      // Re-checking all channels
+      i = 0
+      while (i < sel.length) {
+        val s = sel(i)
+        if (s.isSender) {
+          if (s.channel.hasFreeCapacityOrClosed) {
+            if (s.sendRecv()) {
+              s.afterAction()
+            }
+            var j = 0
+            while (j < sel.length) {
+              sel(j).channel.delWriterWaiter(sem)
+              j += 1
+            }
+            return Option(s.channel)
+          }
+        } else {
+          if (s.channel.hasMessagesOrClosed) {
+            if (s.sendRecv()) {
+              s.afterAction()
+            }
+            var j = 0
+            while (j < sel.length) {
+              sel(j).channel.delReaderWaiter(sem)
+              j += 1
+            }
+            return Option(s.channel)
+          }
+        }
+        i += 1
       }
     }
     // This never happens since the method can only exit on other return paths

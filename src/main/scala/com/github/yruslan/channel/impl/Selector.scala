@@ -24,18 +24,12 @@
  * For more information, please refer to <http://opensource.org/licenses/MIT>
  */
 
-package com.github.yruslan.channel
+package com.github.yruslan.channel.impl
 
-import java.util.concurrent.Semaphore
-import java.util.concurrent.locks.Lock
+import com.github.yruslan.channel.ChannelLike
 
-trait ChannelLike {
-  def isClosed: Boolean
-
-  private [channel] def hasMessagesOrClosed: Boolean
-  private [channel] def hasFreeCapacityOrClosed: Boolean
-  private [channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean
-  private [channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean
-  private [channel] def delReaderWaiter(sem: Semaphore)
-  private [channel] def delWriterWaiter(sem: Semaphore)
+private[channel] abstract class Selector(val isSender: Boolean,
+                                         val channel: ChannelLike) {
+  def sendRecv(): Boolean
+  def afterAction(): Unit
 }

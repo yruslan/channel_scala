@@ -146,12 +146,12 @@ private class SimpleLinkListSuite extends AnyWordSpec {
       assert(lst.size == 3)
     }
 
-    "throw an exception on empty list" in {
+    "do nothing on empty list" in {
       val lst = new SimpleLinkedList[Int]
 
-      intercept[NoSuchElementException] {
-        lst.remove(1)
-      }
+      lst.remove(1)
+
+      assert(lst.isEmpty)
     }
   }
 
