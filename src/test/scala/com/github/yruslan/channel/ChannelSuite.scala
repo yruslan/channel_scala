@@ -29,6 +29,7 @@ package com.github.yruslan.channel
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
+import com.github.yruslan.channel.Channel.selectNew
 import org.scalatest.wordspec.AnyWordSpec
 
 // This import is required for Scala 2.13 since it has a builtin Channel object.
@@ -851,6 +852,21 @@ class ChannelSuite extends AnyWordSpec {
       assert(results.toList == "a" :: "b" :: "c" :: Nil)
       assert(java.time.Duration.between(start, finish).toMillis < 2000L)
     }
+  }
+
+  "selectNew()" should {
+    "work with a single channel" in {
+      val channel = Channel.make[Int](2)
+
+      val selected = Channel.selectNew(channel.sender(1))
+
+      assert(selected == channel)
+
+      val value = channel.tryRecv()
+
+      assert(value.contains(1))
+    }
+
   }
 
 }

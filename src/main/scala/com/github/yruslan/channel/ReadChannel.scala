@@ -26,12 +26,16 @@
 
 package com.github.yruslan.channel
 
+import com.github.yruslan.channel.impl.Selector
+
 import scala.concurrent.duration.Duration
 
 trait ReadChannel[T] extends ChannelLike {
   def recv(): T
   def tryRecv(): Option[T]
   def tryRecv(timeout: Duration): Option[T]
+
+  def recver(action: T => Unit): Selector
 
   def fornew(f: T => Unit): Unit
   def foreach(f: T => Unit): Unit

@@ -75,7 +75,7 @@ class SimpleLinkedList[T] {
 
   def remove(a: T): Unit = this.synchronized {
     if (first == null) {
-      throw new NoSuchElementException
+      return
     }
 
     if (first.el == a) {
