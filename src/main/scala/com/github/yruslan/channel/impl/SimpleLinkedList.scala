@@ -53,6 +53,10 @@ class SimpleLinkedList[T] {
     first == null
   }
 
+  def nonEmpty: Boolean = {
+    first != null
+  }
+
   def size: Int = count
 
   def head: T = {

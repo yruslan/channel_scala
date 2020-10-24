@@ -98,11 +98,11 @@ class ChannelSuite extends AnyWordSpec {
     "closing a synchronous channel should block if the pending message is not received" in {
       val ch = Channel.make[Int]
 
-      ch.trySend(1)
-
       val f = Future {
         ch.close()
       }
+
+      ch.send(1)
 
       intercept[TimeoutException] {
         Await.result(f, Duration.create(50, TimeUnit.MILLISECONDS))
@@ -114,14 +114,17 @@ class ChannelSuite extends AnyWordSpec {
       val ch = Channel.make[Int]
       var v: Option[Int] = None
 
-      ch.trySend(1)
-
-      val f1 = Future {
-        Thread.sleep(50L)
+      Future {
+        Thread.sleep(60L)
         v = Option(ch.recv())
       }
 
+      Future {
+        ch.send(1)
+      }
+
       val f2 = Future {
+        Thread.sleep(20L)
         ch.close()
       }
 
@@ -130,7 +133,7 @@ class ChannelSuite extends AnyWordSpec {
 
       assert(v.nonEmpty)
       assert(v.contains(1))
-      assert(java.time.Duration.between(start, finish).toMillis >= 50L)
+      assert(java.time.Duration.between(start, finish).toMillis >= 60L)
       assert(java.time.Duration.between(start, finish).toMillis < 2000L)
     }
 
@@ -200,6 +203,11 @@ class ChannelSuite extends AnyWordSpec {
       "data is available" in {
         val ch = Channel.make[String]
 
+        Future {
+          ch.recv()
+        }
+
+        Thread.sleep(30)
         val ok = ch.trySend("test", Duration.Zero)
 
         assert(ok)
@@ -248,8 +256,8 @@ class ChannelSuite extends AnyWordSpec {
           ch.recv()
         }
 
-        ch.trySend("test1", Duration.Zero)
         val ok = ch.trySend("test2", Duration.create(10, TimeUnit.MILLISECONDS))
+        ch.send("test1")
 
         Await.result(f, Duration.apply(2, SECONDS))
 
@@ -266,7 +274,6 @@ class ChannelSuite extends AnyWordSpec {
           ch.recv()
         }
 
-        ch.trySend("test1", Duration.Zero)
         val ok = ch.trySend("test", Duration.Inf)
         Await.result(f, Duration.apply(2, SECONDS))
 
@@ -377,7 +384,10 @@ class ChannelSuite extends AnyWordSpec {
       "data is available" in {
         val ch = Channel.make[String]
 
-        ch.trySend("test", Duration.Zero)
+        Future {
+          ch.send("test")
+        }
+        Thread.sleep(30)
         val v = ch.tryRecv(Duration.Zero)
 
         assert(v.nonEmpty)
@@ -547,7 +557,11 @@ class ChannelSuite extends AnyWordSpec {
 
         val processed = ListBuffer[String]()
 
-        ch.trySend("test", Duration.Zero)
+        Future {
+          ch.send("test")
+        }
+
+        Thread.sleep(30)
         ch.fornew(v => processed += v)
 
         assert(processed.nonEmpty)
@@ -858,13 +872,47 @@ class ChannelSuite extends AnyWordSpec {
     "work with a single channel" in {
       val channel = Channel.make[Int](2)
 
-      val selected = Channel.selectNew(channel.sender(1))
+      val ok = Channel.selectNew(channel.sender(1))
 
-      assert(selected == channel)
+      assert(ok)
 
       val value = channel.tryRecv()
 
       assert(value.contains(1))
+    }
+
+    "ping pong messages between 2 workers" in {
+      val actions = new StringBuffer()
+
+      def worker(workerNum: Int, ch: Channel[Int]): Unit = {
+        for (i <- Range(0, 10)) {
+          val k = selectNew(
+            ch.recver(n => {
+              actions.append(s"R$workerNum$i-")
+            }),
+            ch.sender(i, {
+              actions.append(s"S$workerNum$i-")
+            })
+          )
+          if (!k) throw new IllegalArgumentException("sss")
+        }
+      }
+
+      val channel = Channel.make[Int]
+
+      val fut1 = Future {
+        worker(1, channel)
+      }
+
+      val fut2 = Future {
+        worker(2, channel)
+      }
+
+      Await.result(fut1, Duration.apply(4, SECONDS))
+      Await.result(fut2, Duration.apply(4, SECONDS))
+
+      // 10 messages sent and received, by 2 workers
+      assert(actions.toString.length == 80)
     }
 
   }

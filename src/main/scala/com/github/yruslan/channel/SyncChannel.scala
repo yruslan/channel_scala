@@ -27,7 +27,7 @@
 package com.github.yruslan.channel
 
 import java.time.Instant
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{Semaphore, TimeUnit}
 
 import scala.concurrent.duration.Duration
 
@@ -87,7 +87,7 @@ class SyncChannel[T] extends Channel[T] {
       if (closed) {
         false
       } else {
-        if (syncValue.isDefined) {
+        if (!hasCapacity) {
           false
         } else {
           syncValue = Option(value)
@@ -130,7 +130,7 @@ class SyncChannel[T] extends Channel[T] {
     lock.lock()
     try {
       writers += 1
-      while (syncValue.nonEmpty && !closed && !isTimeoutExpired) {
+      while (!hasCapacity && !isTimeoutExpired) {
         if (infinite) {
           cwr.await()
         } else {
@@ -141,6 +141,8 @@ class SyncChannel[T] extends Channel[T] {
         case Some(_) =>
           false
         case None if closed =>
+          false
+        case None if !hasCapacity =>
           false
         case None =>
           syncValue = Option(value)
@@ -157,8 +159,10 @@ class SyncChannel[T] extends Channel[T] {
   override def recv(): T = {
     lock.lock()
     try {
-
       readers += 1
+      if (!closed && syncValue.isEmpty) {
+        notifyWriters()
+      }
       while (!closed && syncValue.isEmpty) {
         crd.await()
       }
@@ -251,7 +255,7 @@ class SyncChannel[T] extends Channel[T] {
   }
 
   override protected def hasCapacity: Boolean = {
-    syncValue.isEmpty
+    syncValue.isEmpty && (readers > 0 || readWaiters.nonEmpty)
   }
 
   override protected def hasMessages: Boolean = {
