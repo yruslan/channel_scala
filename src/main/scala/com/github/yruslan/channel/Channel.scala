@@ -52,6 +52,34 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected val crd: Condition = lock.newCondition()
   protected val cwr: Condition = lock.newCondition()
 
+  override private[channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = {
+    lock.lock()
+    try {
+      if (closed || hasMessages) {
+        false
+      } else {
+        readWaiters.append(sem)
+        true
+      }
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  override private[channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = {
+    lock.lock()
+    try {
+      if (closed || hasCapacity) {
+        false
+      } else {
+        writeWaiters.append(sem)
+        true
+      }
+    } finally {
+      lock.unlock()
+    }
+  }
+
   override def fornew(f: T => Unit): Unit = {
     val valueOpt = tryRecv()
     valueOpt.foreach(v => f(v))
@@ -109,34 +137,6 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     val ret = closed || hasCapacity
     lock.unlock()
     ret
-  }
-
-  override private[channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = {
-    lock.lock()
-    try {
-      if (closed || hasMessages) {
-        false
-      } else {
-        readWaiters.append(sem)
-        true
-      }
-    } finally {
-      lock.unlock()
-    }
-  }
-
-  override private[channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = {
-    lock.lock()
-    try {
-      if (closed || hasCapacity) {
-        false
-      } else {
-        writeWaiters.append(sem)
-        true
-      }
-    } finally {
-      lock.unlock()
-    }
   }
 
   override private[channel] def delReaderWaiter(sem: Semaphore): Unit = {
@@ -302,10 +302,10 @@ object Channel {
    *
    * @param selector  A first channel to wait for (mandatory).
    * @param selectors Other channels to wait for.
-   * @return A channel that has a pending message.
+   * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed
    */
-  def selectNew(selector: Selector, selectors: Selector*): ChannelLike = {
-    trySelectNew(Duration.Inf, selector, selectors: _*).get
+  def selectNew(selector: Selector, selectors: Selector*): Boolean = {
+    trySelectNew(Duration.Inf, selector, selectors: _*).isDefined
   }
 
   /**
@@ -343,10 +343,8 @@ object Channel {
       } else {
         s.channel.ifEmptyAddReaderWaiter(sem)
       }
-      if (!blocking) {
-        if (s.sendRecv()) {
-          s.afterAction()
-        }
+      if (!blocking && s.sendRecv()) {
+        s.afterAction()
         var j = 0
         while (j < i) {
           if (sel(j).isSender) {
@@ -361,57 +359,56 @@ object Channel {
       i += 1
     }
 
-    val success = if (timout.isFinite) {
-      sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
-    } else {
-      sem.acquire()
-      true
-    }
-    if (!success) {
-      var j = 0
-      while (j < sel.length) {
-        if (sel(j).isSender) {
-          sel(j).channel.delWriterWaiter(sem)
+    while (true) {
+      // Re-checking all channels
+      i = 0
+      while (i < sel.length) {
+        val s = sel(i)
+        if (s.isSender) {
+          if (s.channel.hasFreeCapacityOrClosed && s.sendRecv()) {
+            s.afterAction()
+            var j = 0
+            while (j < sel.length) {
+              sel(j).channel.delWriterWaiter(sem)
+              j += 1
+            }
+            return Option(s.channel)
+          }
         } else {
-          sel(j).channel.delReaderWaiter(sem)
+          if (s.channel.hasMessagesOrClosed && s.sendRecv()) {
+            s.afterAction()
+            var j = 0
+            while (j < sel.length) {
+              sel(j).channel.delReaderWaiter(sem)
+              j += 1
+            }
+            return Option(s.channel)
+          }
         }
-        j += 1
+        i += 1
       }
-      return None
-    }
 
-    // Re-checking all channels
-    i = 0
-    while (i < sel.length) {
-      val s = sel(i)
-      if (s.isSender) {
-        if (s.channel.hasFreeCapacityOrClosed) {
-          if (s.sendRecv()) {
-            s.afterAction()
-          }
-          var j = 0
-          while (j < sel.length) {
-            sel(j).channel.delWriterWaiter(sem)
-            j += 1
-          }
-          return Option(s.channel)
-        }
+      val success = if (timout.isFinite) {
+        sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
       } else {
-        if (s.channel.hasMessagesOrClosed) {
-          if (s.sendRecv()) {
-            s.afterAction()
-          }
-          var j = 0
-          while (j < sel.length) {
-            sel(j).channel.delReaderWaiter(sem)
-            j += 1
-          }
-          return Option(s.channel)
-        }
+        sem.acquire()
+        true
       }
-      i += 1
+      if (!success) {
+        var j = 0
+        while (j < sel.length) {
+          if (sel(j).isSender) {
+            sel(j).channel.delWriterWaiter(sem)
+          } else {
+            sel(j).channel.delReaderWaiter(sem)
+          }
+          j += 1
+        }
+        return None
+      }
     }
-    None
+    // This never happens since the method can only exit on other return paths
+    null
   }
 
 }
