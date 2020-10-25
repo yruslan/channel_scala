@@ -115,7 +115,7 @@ class ChannelSuite extends AnyWordSpec {
       var v: Option[Int] = None
 
       Future {
-        Thread.sleep(60L)
+        Thread.sleep(120L)
         v = Option(ch.recv())
       }
 
@@ -124,7 +124,7 @@ class ChannelSuite extends AnyWordSpec {
       }
 
       val f2 = Future {
-        Thread.sleep(20L)
+        Thread.sleep(50L)
         ch.close()
       }
 

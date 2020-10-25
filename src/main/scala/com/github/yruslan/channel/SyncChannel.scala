@@ -29,6 +29,8 @@ package com.github.yruslan.channel
 import java.time.Instant
 import java.util.concurrent.{Semaphore, TimeUnit}
 
+import com.github.yruslan.channel.impl.Awaiter
+
 import scala.concurrent.duration.Duration
 
 class SyncChannel[T] extends Channel[T] {
@@ -105,38 +107,16 @@ class SyncChannel[T] extends Channel[T] {
       return trySend(value)
     }
 
-    val infinite = !timeout.isFinite
-    val timeoutMilli = if (infinite) 0L else timeout.toMillis
-
-    val start = Instant.now.toEpochMilli
-
-    def elapsedTime(): Long = {
-      Instant.now.toEpochMilli - start
-    }
-
-    def isTimeoutExpired: Boolean = {
-      if (infinite) {
-        false
-      } else {
-        elapsedTime >= timeoutMilli
-      }
-    }
-
-    def timeLeft(): Long = {
-      val timeLeft = timeoutMilli - elapsedTime()
-      if (timeLeft < 0L) 0L else timeLeft
-    }
+    val awaiter = new Awaiter(timeout)
 
     lock.lock()
     try {
       writers += 1
-      while (!hasCapacity && !isTimeoutExpired) {
-        if (infinite) {
-          cwr.await()
-        } else {
-          cwr.await(timeLeft(), TimeUnit.MILLISECONDS)
-        }
+      var isTimeoutExpired = false
+      while (!closed && !hasCapacity && !isTimeoutExpired) {
+        isTimeoutExpired = !awaiter.await(cwr)
       }
+
       val isSucceeded = syncValue match {
         case Some(_) =>
           false
@@ -206,37 +186,14 @@ class SyncChannel[T] extends Channel[T] {
       return tryRecv()
     }
 
-    val infinite = !timeout.isFinite
-    val timeoutMilli = if (infinite) 0L else timeout.toMillis
-
-    val start = Instant.now.toEpochMilli
-
-    def elapsedTime(): Long = {
-      Instant.now.toEpochMilli - start
-    }
-
-    def isTimeoutExpired: Boolean = {
-      if (infinite) {
-        false
-      } else {
-        elapsedTime >= timeoutMilli
-      }
-    }
-
-    def timeLeft(): Long = {
-      val timeLeft = timeoutMilli - elapsedTime()
-      if (timeLeft < 0L) 0L else timeLeft
-    }
+    val awaiter = new Awaiter(timeout)
 
     lock.lock()
     try {
       readers += 1
-      while (!closed && syncValue.isEmpty && !isTimeoutExpired) {
-        if (infinite) {
-          crd.await()
-        } else {
-          crd.await(timeLeft(), TimeUnit.MILLISECONDS)
-        }
+      var isTimeoutExpired = false
+      while (!closed && !hasMessages && !isTimeoutExpired) {
+        isTimeoutExpired = !awaiter.await(crd)
       }
       readers -= 1
 
