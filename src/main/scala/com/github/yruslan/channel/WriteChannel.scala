@@ -35,7 +35,7 @@ trait WriteChannel[T] extends ChannelLike {
   def trySend(value: T): Boolean
   def trySend(value: T, timeout: Duration): Boolean
 
-  def sender(value: T, action: => Unit): Selector
+  def sender(value: T)(action: => Unit): Selector
 
   def close(): Unit
 }
