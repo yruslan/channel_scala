@@ -103,7 +103,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
 
   protected def fetchValueOpt(): Option[T]
 
-  override def sender(value: T, action: => Unit = {}): Selector = {
+  override def sender(value: T) (action: => Unit = {}): Selector = {
     new Selector(true, this) {
       override def sendRecv(): Boolean = trySend(value)
 

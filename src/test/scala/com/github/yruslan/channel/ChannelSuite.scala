@@ -652,9 +652,7 @@ class ChannelSuite extends AnyWordSpec {
 
       channel.send(1)
 
-      val selected = Channel.select(channel)
-
-      assert(selected == channel)
+      Channel.selectNew(channel.sender(1) {})
 
       val value = channel.tryRecv()
 
@@ -872,7 +870,7 @@ class ChannelSuite extends AnyWordSpec {
     "work with a single channel" in {
       val channel = Channel.make[Int](2)
 
-      val ok = Channel.selectNew(channel.sender(1))
+      val ok = Channel.selectNew(channel.sender(1) {})
 
       assert(ok)
 
@@ -890,9 +888,9 @@ class ChannelSuite extends AnyWordSpec {
             ch.recver(n => {
               actions.append(s"R$workerNum$i-")
             }),
-            ch.sender(i, {
+            ch.sender(i){
               actions.append(s"S$workerNum$i-")
-            })
+            }
           )
           if (!k) throw new IllegalArgumentException("sss")
         }
