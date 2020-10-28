@@ -31,8 +31,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import org.scalatest.wordspec.AnyWordSpec
 
-// This import is required for Scala 2.13 since it has a builtin Channel object.
-import com.github.yruslan.channel.Channel.select
+import com.github.yruslan.channel.Channel.selectNew
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent._
@@ -61,14 +60,15 @@ class GuaranteesSuite extends AnyWordSpec {
 
       val fut = Future {
         while (!ch1.isClosed && !ch2.isClosed)
-        select(ch1, ch2) match {
-          case `ch1` =>
-            ch1.fornew(_ => processed1Times += Instant.now())
-            Thread.sleep(30)
-          case `ch2` =>
-            ch2.fornew(_ => processed2Times += Instant.now())
-            Thread.sleep(30)
-        }
+          selectNew(
+            ch1.recver { _ =>
+              processed1Times += Instant.now()
+              Thread.sleep(30)
+            },
+            ch2.recver { _ =>
+              processed2Times += Instant.now()
+              Thread.sleep(30)
+            })
       }
 
       for (_ <- Range(0, 20)) {

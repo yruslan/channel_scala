@@ -32,8 +32,8 @@ import java.util.concurrent.locks.Lock
 trait ChannelLike {
   def isClosed: Boolean
 
-  private [channel] def hasMessagesOrClosed: Boolean
-  private [channel] def hasFreeCapacityOrClosed: Boolean
+  private [channel] def hasMessagesStatus: Int
+  private [channel] def hasFreeCapacityStatus: Int
   private [channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean
   private [channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean
   private [channel] def delReaderWaiter(sem: Semaphore)

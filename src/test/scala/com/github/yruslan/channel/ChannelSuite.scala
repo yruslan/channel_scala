@@ -32,14 +32,12 @@ import java.util.concurrent.{Executors, TimeUnit}
 import com.github.yruslan.channel.Channel.selectNew
 import org.scalatest.wordspec.AnyWordSpec
 
+import scala.collection.mutable.ListBuffer
+import scala.concurrent._
+import scala.concurrent.duration.{Duration, SECONDS}
+
 // This import is required for Scala 2.13 since it has a builtin Channel object.
 import com.github.yruslan.channel.Channel
-
-import com.github.yruslan.channel.Channel.select
-
-import scala.collection.mutable.ListBuffer
-import scala.concurrent.duration.{Duration, SECONDS}
-import scala.concurrent._
 
 class ChannelSuite extends AnyWordSpec {
   implicit private val ec: ExecutionContextExecutor =
@@ -650,13 +648,45 @@ class ChannelSuite extends AnyWordSpec {
     "work with a single channel" in {
       val channel = Channel.make[Int](2)
 
-      channel.send(1)
-
-      Channel.selectNew(channel.sender(1) {})
-
+      val ok = Channel.selectNew(channel.sender(1) {})
       val value = channel.tryRecv()
 
+      assert(ok)
       assert(value.contains(1))
+    }
+
+    "ping pong messages between 2 workers" in {
+      val actions = new StringBuffer()
+
+      def worker(workerNum: Int, ch: Channel[Int]): Unit = {
+        for (i <- Range(0, 10)) {
+          val k = selectNew(
+            ch.recver(n => {
+              actions.append(s"R$workerNum$i-")
+            }),
+            ch.sender(i) {
+              actions.append(s"S$workerNum$i-")
+            }
+          )
+          if (!k) throw new IllegalArgumentException("sss")
+        }
+      }
+
+      val channel = Channel.make[Int]
+
+      val fut1 = Future {
+        worker(1, channel)
+      }
+
+      val fut2 = Future {
+        worker(2, channel)
+      }
+
+      Await.result(fut1, Duration.apply(4, SECONDS))
+      Await.result(fut2, Duration.apply(4, SECONDS))
+
+      // 10 messages sent and received, by 2 workers
+      assert(actions.toString.length == 80)
     }
 
     "work with two channels" in {
@@ -666,23 +696,52 @@ class ChannelSuite extends AnyWordSpec {
       channel1.send(1)
       channel2.send(2)
 
-      val selected1 = Channel.select(channel1, channel2)
-      val value1 = if (selected1 == channel1) {
-        channel1.recv()
-      } else {
-        channel2.recv()
-      }
+      var value1 = 0
+      var value2 = 0
 
-      val selected2 = Channel.select(channel1, channel2)
-      val value2 = if (selected2 == channel1) {
-        channel1.recv()
-      } else {
-        channel2.recv()
-      }
+      val selected1 = Channel.selectNew(
+        channel1.recver { v => value1 = v },
+        channel2.recver { v => value1 = v }
+      )
 
+      val selected2 = Channel.selectNew(
+        channel1.recver { v => value2 = v },
+        channel2.recver { v => value2 = v })
+
+      assert(selected1)
+      assert(selected2)
       assert(value1 == 1 || value1 == 2)
       assert(value2 == 1 || value2 == 2)
       assert(value1 != value2)
+    }
+
+    "work with when sending and receiving in the same select statement" in {
+      val channel = Channel.make[Int]
+
+      var value1 = 0
+      var value2 = 0
+
+      val fut = Future {
+        channel.send(1)
+        value1 = channel.recv()
+      }
+
+      val selected1 = Channel.selectNew(
+        channel.sender(2) {},
+        channel.recver { v => value2 = v }
+      )
+
+      val selected2 = Channel.selectNew(
+        channel.sender(2) {},
+        channel.recver { v => value2 = v }
+      )
+
+      Await.result(fut, Duration.apply(4, SECONDS))
+
+      assert(selected1)
+      assert(selected2)
+      assert(value1 == 2)
+      assert(value2 == 1)
     }
   }
 
@@ -696,9 +755,13 @@ class ChannelSuite extends AnyWordSpec {
           channel.send(1)
         }
 
-        val selected = Channel.trySelect(Duration.create(200, TimeUnit.MILLISECONDS), channel)
+        var value1 = 0
+        val selected = Channel.trySelectNew(Duration.create(200, TimeUnit.MILLISECONDS),
+          channel.recver(v => value1 = v)
+        )
 
-        assert(selected.contains(channel))
+        assert(selected)
+        assert(value1 == 1)
       }
 
       "timeout is expired" in {
@@ -709,9 +772,13 @@ class ChannelSuite extends AnyWordSpec {
           channel.send(1)
         }
 
-        val selected = Channel.trySelect(Duration.create(1, TimeUnit.MILLISECONDS), channel)
+        var value1 = 0
+        val selected = Channel.trySelectNew(Duration.create(1, TimeUnit.MILLISECONDS),
+          channel.recver(v => value1 = v)
+        )
 
-        assert(selected.isEmpty)
+        assert(!selected)
+        assert(value1 == 0)
       }
     }
 
@@ -721,17 +788,25 @@ class ChannelSuite extends AnyWordSpec {
 
         channel.send(1)
 
-        val selected = Channel.trySelect(channel)
+        var value1 = 0
+        val selected = Channel.trySelectNew(Duration.Zero,
+          channel.recver(v => value1 = v)
+        )
 
-        assert(selected.contains(channel))
+        assert(selected)
+        assert(value1 == 1)
       }
 
       "when data is not available" in {
         val channel = Channel.make[Int](1)
 
-        val selected = Channel.trySelect(channel)
+        var value1 = 0
+        val selected = Channel.trySelectNew(Duration.Zero,
+          channel.recver(v => value1 = v)
+        )
 
-        assert(selected.isEmpty)
+        assert(!selected)
+        assert(value1 == 0)
       }
     }
 
@@ -741,16 +816,21 @@ class ChannelSuite extends AnyWordSpec {
 
         channel.send(1)
 
-        val selected = Channel.trySelect(Duration.Inf, channel)
+        var value1 = 0
+        val selected = Channel.trySelectNew(Duration.Inf,
+          channel.recver(v => value1 = v)
+        )
 
-        assert(selected.contains(channel))
+        assert(selected)
+        assert(value1 == 1)
       }
 
       "when data is not available" in {
         val channel = Channel.make[Int](1)
 
         val fut = Future {
-          Channel.trySelect(Duration.Inf, channel)
+          Channel.trySelectNew(Duration.Inf,
+            channel.recver(v => {}))
         }
 
         intercept[TimeoutException] {
@@ -765,16 +845,17 @@ class ChannelSuite extends AnyWordSpec {
     // Worker that operates on 2 channels
     def worker2(workerNum: Int, results: ListBuffer[String], channell: Channel[Int], channel2: Channel[String]): Unit = {
       while (!channell.isClosed && !channel2.isClosed) {
-        select(channell, channel2) match {
-          case `channell` =>
-            channell.tryRecv().foreach(v => results.synchronized {
+        selectNew(
+          channell.recver { v =>
+            results.synchronized {
               results += s"$workerNum->i$v"
-            })
-          case `channel2` =>
-            channel2.tryRecv().foreach(v => results.synchronized {
+            }
+          },
+          channel2.recver { v =>
+            results.synchronized {
               results += s"$workerNum->s$v"
-            })
-        }
+            }
+          })
         Thread.sleep(10)
       }
     }
@@ -835,84 +916,6 @@ class ChannelSuite extends AnyWordSpec {
 
       assert(results.size == 6)
     }
-
-    "handle a situation when one worked doen't handle a received message" in {
-      val channel1 = Channel.make[String](3)
-      val results = new ListBuffer[String]
-      val start = Instant.now
-
-      Future {
-        select(channel1)
-      }
-
-      val worked2Fut = Future {
-        while (!channel1.isClosed) {
-          select(channel1)
-          channel1.fornew(s => results += s)
-        }
-      }
-
-      Thread.sleep(20)
-      channel1.send("a")
-      channel1.send("b")
-      channel1.send("c")
-      channel1.close()
-
-      Await.result(worked2Fut, Duration.apply(2, SECONDS))
-      val finish = Instant.now
-
-      assert(results.toList == "a" :: "b" :: "c" :: Nil)
-      assert(java.time.Duration.between(start, finish).toMillis < 2000L)
-    }
-  }
-
-  "selectNew()" should {
-    "work with a single channel" in {
-      val channel = Channel.make[Int](2)
-
-      val ok = Channel.selectNew(channel.sender(1) {})
-
-      assert(ok)
-
-      val value = channel.tryRecv()
-
-      assert(value.contains(1))
-    }
-
-    "ping pong messages between 2 workers" in {
-      val actions = new StringBuffer()
-
-      def worker(workerNum: Int, ch: Channel[Int]): Unit = {
-        for (i <- Range(0, 10)) {
-          val k = selectNew(
-            ch.recver(n => {
-              actions.append(s"R$workerNum$i-")
-            }),
-            ch.sender(i){
-              actions.append(s"S$workerNum$i-")
-            }
-          )
-          if (!k) throw new IllegalArgumentException("sss")
-        }
-      }
-
-      val channel = Channel.make[Int]
-
-      val fut1 = Future {
-        worker(1, channel)
-      }
-
-      val fut2 = Future {
-        worker(2, channel)
-      }
-
-      Await.result(fut1, Duration.apply(4, SECONDS))
-      Await.result(fut2, Duration.apply(4, SECONDS))
-
-      // 10 messages sent and received, by 2 workers
-      assert(actions.toString.length == 80)
-    }
-
   }
 
 }
