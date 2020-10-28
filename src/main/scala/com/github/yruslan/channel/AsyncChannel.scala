@@ -26,9 +26,6 @@
 
 package com.github.yruslan.channel
 
-import java.time.Instant
-import java.util.concurrent.TimeUnit
-
 import com.github.yruslan.channel.impl.Awaiter
 
 import scala.collection.mutable
@@ -39,7 +36,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
 
   protected val q = new mutable.Queue[T]
 
-  override def close(): Unit = {
+  final override def close(): Unit = {
     lock.lock()
     try {
       if (!closed) {
@@ -54,7 +51,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def send(value: T): Unit = {
+  final override def send(value: T): Unit = {
     lock.lock()
     try {
       if (closed) {
@@ -77,7 +74,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def trySend(value: T): Boolean = {
+  final override def trySend(value: T): Boolean = {
     lock.lock()
     try {
       if (closed) {
@@ -96,7 +93,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def trySend(value: T, timeout: Duration): Boolean = {
+  final override def trySend(value: T, timeout: Duration): Boolean = {
     if (timeout == Duration.Zero) {
       return trySend(value)
     }
@@ -126,7 +123,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def recv(): T = {
+  final override def recv(): T = {
     lock.lock()
     try {
       readers += 1
@@ -148,7 +145,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def tryRecv(): Option[T] = {
+  final override def tryRecv(): Option[T] = {
     lock.lock()
     try {
       if (closed && q.isEmpty) {
@@ -167,7 +164,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def tryRecv(timeout: Duration): Option[T] = {
+  final override def tryRecv(timeout: Duration): Option[T] = {
     if (timeout == Duration.Zero) {
       return tryRecv()
     }
@@ -189,7 +186,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override def isClosed: Boolean = {
+  final override def isClosed: Boolean = {
     if (q.nonEmpty) {
       false
     } else {
@@ -197,15 +194,15 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
-  override protected def hasCapacity: Boolean = {
+  final override protected def hasCapacity: Boolean = {
     q.size < maxCapacity
   }
 
-  override protected def hasMessages: Boolean = {
+  final override protected def hasMessages: Boolean = {
     q.nonEmpty
   }
 
-  override protected def fetchValueOpt(): Option[T] = {
+  final override protected def fetchValueOpt(): Option[T] = {
     if (q.isEmpty) {
       None
     } else {

@@ -26,9 +26,6 @@
 
 package com.github.yruslan.channel
 
-import java.time.Instant
-import java.util.concurrent.{Semaphore, TimeUnit}
-
 import com.github.yruslan.channel.impl.Awaiter
 
 import scala.concurrent.duration.Duration
@@ -36,7 +33,7 @@ import scala.concurrent.duration.Duration
 class SyncChannel[T] extends Channel[T] {
   protected var syncValue: Option[T] = None
 
-  override def close(): Unit = {
+  final override def close(): Unit = {
     lock.lock()
     try {
       if (!closed) {
@@ -57,7 +54,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def send(value: T): Unit = {
+  final override def send(value: T): Unit = {
     lock.lock()
     try {
       if (closed) {
@@ -83,7 +80,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def trySend(value: T): Boolean = {
+  final override def trySend(value: T): Boolean = {
     lock.lock()
     try {
       if (closed) {
@@ -102,7 +99,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def trySend(value: T, timeout: Duration): Boolean = {
+  final override def trySend(value: T, timeout: Duration): Boolean = {
     if (timeout == Duration.Zero) {
       return trySend(value)
     }
@@ -136,7 +133,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def recv(): T = {
+  final override def recv(): T = {
     lock.lock()
     try {
       readers += 1
@@ -161,7 +158,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def tryRecv(): Option[T] = {
+  final override def tryRecv(): Option[T] = {
     lock.lock()
     try {
       if (closed && syncValue.isEmpty) {
@@ -181,7 +178,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def tryRecv(timeout: Duration): Option[T] = {
+  final override def tryRecv(timeout: Duration): Option[T] = {
     if (timeout == Duration.Zero) {
       return tryRecv()
     }
@@ -203,7 +200,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override def isClosed: Boolean = {
+  final override def isClosed: Boolean = {
     if (syncValue.nonEmpty) {
       false
     } else {
@@ -211,15 +208,15 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
-  override protected def hasCapacity: Boolean = {
+  final override protected def hasCapacity: Boolean = {
     syncValue.isEmpty && (readers > 0 || readWaiters.nonEmpty)
   }
 
-  override protected def hasMessages: Boolean = {
+  final override protected def hasMessages: Boolean = {
     syncValue.isDefined
   }
 
-  protected def fetchValueOpt(): Option[T] = {
+  final protected def fetchValueOpt(): Option[T] = {
     if (syncValue.nonEmpty) {
       notifyWriters()
     }

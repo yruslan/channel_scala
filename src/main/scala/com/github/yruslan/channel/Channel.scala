@@ -26,13 +26,11 @@
 
 package com.github.yruslan.channel
 
-import java.time.Instant
-import java.util.concurrent.{Semaphore, TimeUnit}
 import java.util.concurrent.locks.{Condition, ReentrantLock}
+import java.util.concurrent.{Semaphore, TimeUnit}
 
 import com.github.yruslan.channel.impl.{Selector, SimpleLinkedList}
 
-import scala.collection.mutable
 import scala.concurrent.duration.Duration
 
 abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
@@ -43,7 +41,6 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected val readWaiters = new SimpleLinkedList[Semaphore]
   protected val writeWaiters = new SimpleLinkedList[Semaphore]
 
-
   // Scala & Java monitors are designed so each object can act as a mutex and a condition variable.
   // But this makes impossible to use a single lock for more than one condition.
   // So a lock from [java.util.concurrent.locks] is used instead. It allows to have several condition
@@ -52,7 +49,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected val crd: Condition = lock.newCondition()
   protected val cwr: Condition = lock.newCondition()
 
-  override private[channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = {
+  final override private[channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = {
     lock.lock()
     try {
       if (closed || hasMessages) {
@@ -66,7 +63,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  override private[channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = {
+  final override private[channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = {
     lock.lock()
     try {
       if (closed || hasCapacity) {
@@ -80,12 +77,12 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  override def fornew(f: T => Unit): Unit = {
+  final override def fornew(f: T => Unit): Unit = {
     val valueOpt = tryRecv()
     valueOpt.foreach(v => f(v))
   }
 
-  override def foreach(f: T => Unit): Unit = {
+  final override def foreach(f: T => Unit): Unit = {
     while (!isClosed) {
       lock.lock()
       readers += 1
@@ -103,7 +100,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
 
   protected def fetchValueOpt(): Option[T]
 
-  override def sender(value: T) (action: => Unit = {}): Selector = {
+  final override def sender(value: T) (action: => Unit = {}): Selector = {
     new Selector(true, this) {
       override def sendRecv(): Boolean = trySend(value)
 
@@ -111,7 +108,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  override def recver(action: T => Unit): Selector = {
+  final override def recver(action: T => Unit): Selector = {
     new Selector(false, this) {
       var el: T = _
 
@@ -125,21 +122,33 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  override private[channel] def hasMessagesOrClosed: Boolean = {
+  final override private[channel] def hasMessagesStatus: Int = {
     lock.lock()
-    val ret = closed || hasMessages
+    val status = if (hasMessages) {
+      Channel.AVAILABLE
+    } else if (closed) {
+      Channel.CLOSED
+    } else {
+      Channel.NOT_AVAILABLE
+    }
     lock.unlock()
-    ret
+    status
   }
 
-  override private[channel] def hasFreeCapacityOrClosed: Boolean = {
+  final override private[channel] def hasFreeCapacityStatus: Int = {
     lock.lock()
-    val ret = closed || hasCapacity
+    val status = if (hasCapacity) {
+      Channel.AVAILABLE
+    } else if (closed) {
+      Channel.CLOSED
+    } else {
+      Channel.NOT_AVAILABLE
+    }
     lock.unlock()
-    ret
+    status
   }
 
-  override private[channel] def delReaderWaiter(sem: Semaphore): Unit = {
+  final override private[channel] def delReaderWaiter(sem: Semaphore): Unit = {
     lock.lock()
     try {
       readWaiters.remove(sem)
@@ -148,7 +157,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  override private[channel] def delWriterWaiter(sem: Semaphore): Unit = {
+  final override private[channel] def delWriterWaiter(sem: Semaphore): Unit = {
     lock.lock()
     try {
       writeWaiters.remove(sem)
@@ -157,7 +166,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  protected def notifyReaders(): Unit = {
+  final protected def notifyReaders(): Unit = {
     if (readers > 0) {
       crd.signal()
     } else {
@@ -167,7 +176,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  protected def notifyWriters(): Unit = {
+  final protected def notifyWriters(): Unit = {
     if (writers > 0) {
       cwr.signal()
     } else {
@@ -183,6 +192,10 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
 }
 
 object Channel {
+  val NOT_AVAILABLE = 0
+  val AVAILABLE = 1
+  val CLOSED = 2
+
   /**
    * Create a synchronous channel.
    *
@@ -212,100 +225,14 @@ object Channel {
   }
 
   /**
-   * Waits to receive a message from any of the channels.
-   *
-   * @param channel  A first channel to wait for (mandatory).
-   * @param channels Other channels to wait for.
-   * @return A channel that has a pending message.
-   */
-  def select(channel: ReadChannel[_], channels: ReadChannel[_]*): ChannelLike = {
-    trySelect(Duration.Inf, channel, channels: _*).get
-  }
-
-  /**
-   * Non-blocking check for a pending messages in multiple channels.
-   *
-   * @param channel  A first channel to wait for (mandatory).
-   * @param channels Other channels to wait for.
-   * @return A channel that has a pending message or None, if any of the channels have a pending message.
-   */
-  def trySelect(channel: ReadChannel[_], channels: ReadChannel[_]*): Option[ChannelLike] = {
-    trySelect(Duration.Zero, channel, channels: _*)
-  }
-
-  /**
-   * Waits to receive a message from any of the channels for a specified amount of time.
-   *
-   * @param timout   A timeout to wait for pending messages.
-   * @param channel  A first channel to wait for (mandatory).
-   * @param channels Other channels to wait for.
-   * @return A channel that has a pending message or None, if any of the channels have a pending message.
-   */
-  def trySelect(timout: Duration, channel: ReadChannel[_], channels: ReadChannel[_]*): Option[ChannelLike] = {
-    val sem = new Semaphore(0)
-
-    // If several channels have pending messages, select randomly the channel to return
-    val chans = scala.util.Random.shuffle(channel :: channels.toList).toArray
-
-    // Add waiters
-    var i = 0
-    while (i < chans.length) {
-      val ch = chans(i)
-      if (!ch.ifEmptyAddReaderWaiter(sem)) {
-        var j = 0
-        while (j < i) {
-          chans(j).delReaderWaiter(sem)
-          j += 1
-        }
-        return Option(ch)
-      }
-      i += 1
-    }
-
-    while (true) {
-      // Re-checking all channels
-      i = 0
-      while (i < chans.length) {
-        val ch = chans(i)
-        if (ch.hasMessagesOrClosed) {
-          var j = 0
-          while (j < chans.length) {
-            chans(j).delReaderWaiter(sem)
-            j += 1
-          }
-          return Option(ch)
-        }
-        i += 1
-      }
-      val success = if (timout.isFinite) {
-        sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
-      } else {
-        sem.acquire()
-        true
-      }
-      if (!success) {
-        var j = 0
-        while (j < chans.length) {
-          chans(j).delReaderWaiter(sem)
-          j += 1
-        }
-        return None
-      }
-    }
-    // This never happens since the method can only exit on other return paths
-    null
-  }
-
-
-  /**
    * Waits for a non-blocking operation to be available on the list of channels.
    *
    * @param selector  A first channel to wait for (mandatory).
    * @param selectors Other channels to wait for.
-   * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed
+   * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed.
    */
   def selectNew(selector: Selector, selectors: Selector*): Boolean = {
-    trySelectNew(Duration.Inf, selector, selectors: _*).isDefined
+    trySelectNew(Duration.Inf, selector, selectors: _*)
   }
 
   /**
@@ -313,12 +240,11 @@ object Channel {
    *
    * @param selector  A first channel to wait for (mandatory).
    * @param selectors Other channels to wait for.
-   * @return A channel that has a pending message or None, if any of the channels have a pending message.
+   * @return true if one of pending operations wasn't blocking.
    */
-  def trySelectNew(selector: Selector, selectors: Selector*): Option[ChannelLike] = {
+  def trySelectNew(selector: Selector, selectors: Selector*): Boolean = {
     trySelectNew(Duration.Zero, selector, selectors: _*)
   }
-
 
   /**
    * Waits for a non-bloaking action to be available.
@@ -326,9 +252,9 @@ object Channel {
    * @param timout    A timeout to wait for a non-blocking action to be available.
    * @param selector  A first channel to wait for (mandatory).
    * @param selectors Other channels to wait for.
-   * @return A channel that has a pending message.
+   * @return true if one of pending operations wasn't blockingю
    */
-  def trySelectNew(timout: Duration, selector: Selector, selectors: Selector*): Option[ChannelLike] = {
+  def trySelectNew(timout: Duration, selector: Selector, selectors: Selector*): Boolean = {
     val sem = new Semaphore(0)
 
     // If several channels have pending messages, select randomly the channel to return
@@ -354,7 +280,7 @@ object Channel {
           }
           j += 1
         }
-        return Option(s.channel)
+        return true
       }
       i += 1
     }
@@ -365,24 +291,30 @@ object Channel {
       while (i < sel.length) {
         val s = sel(i)
         if (s.isSender) {
-          if (s.channel.hasFreeCapacityOrClosed && s.sendRecv()) {
+          val status = s.channel.hasFreeCapacityStatus
+          if (status == AVAILABLE && s.sendRecv()) {
             s.afterAction()
             var j = 0
             while (j < sel.length) {
               sel(j).channel.delWriterWaiter(sem)
               j += 1
             }
-            return Option(s.channel)
+            return true
+          } else if (status == CLOSED) {
+            return false
           }
         } else {
-          if (s.channel.hasMessagesOrClosed && s.sendRecv()) {
+          val status = s.channel.hasMessagesStatus
+          if (status == AVAILABLE && s.sendRecv()) {
             s.afterAction()
             var j = 0
             while (j < sel.length) {
               sel(j).channel.delReaderWaiter(sem)
               j += 1
             }
-            return Option(s.channel)
+            return true
+          } else if (status == CLOSED) {
+            return false
           }
         }
         i += 1
@@ -404,11 +336,11 @@ object Channel {
           }
           j += 1
         }
-        return None
+        return false
       }
     }
     // This never happens since the method can only exit on other return paths
-    null
+    false
   }
 
 }
