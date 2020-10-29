@@ -231,8 +231,8 @@ object Channel {
    * @param selectors Other channels to wait for.
    * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed.
    */
-  def selectNew(selector: Selector, selectors: Selector*): Boolean = {
-    trySelectNew(Duration.Inf, selector, selectors: _*)
+  def select(selector: Selector, selectors: Selector*): Boolean = {
+    trySelect(Duration.Inf, selector, selectors: _*)
   }
 
   /**
@@ -242,8 +242,8 @@ object Channel {
    * @param selectors Other channels to wait for.
    * @return true if one of pending operations wasn't blocking.
    */
-  def trySelectNew(selector: Selector, selectors: Selector*): Boolean = {
-    trySelectNew(Duration.Zero, selector, selectors: _*)
+  def trySelect(selector: Selector, selectors: Selector*): Boolean = {
+    trySelect(Duration.Zero, selector, selectors: _*)
   }
 
   /**
@@ -254,7 +254,7 @@ object Channel {
    * @param selectors Other channels to wait for.
    * @return true if one of pending operations wasn't blockingю
    */
-  def trySelectNew(timout: Duration, selector: Selector, selectors: Selector*): Boolean = {
+  def trySelect(timout: Duration, selector: Selector, selectors: Selector*): Boolean = {
     val sem = new Semaphore(0)
 
     // If several channels have pending messages, select randomly the channel to return

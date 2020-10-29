@@ -31,7 +31,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 import org.scalatest.wordspec.AnyWordSpec
 
-import com.github.yruslan.channel.Channel.selectNew
+import com.github.yruslan.channel.Channel.select
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent._
@@ -60,7 +60,7 @@ class GuaranteesSuite extends AnyWordSpec {
 
       val fut = Future {
         while (!ch1.isClosed && !ch2.isClosed)
-          selectNew(
+          select(
             ch1.recver { _ =>
               processed1Times += Instant.now()
               Thread.sleep(30)
