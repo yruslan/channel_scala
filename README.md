@@ -232,10 +232,10 @@ Future {
 }
 
 for (_ <- Range(0, 2)) {
-  Channel.select(channel1, channel2) match {
-    case `channel1` => println(channel1.recv())
-    case `channel2` => println(channel2.recv())
-  }
+  Channel.select(
+      channel1.recver{v => println(v)},
+      channel2.recver{v => println(v)}
+  )
 }
 ```
 Output:
@@ -246,7 +246,7 @@ two
 
 ### Non-blocking methods
 Go supports non-blocking channel operation by the elegant `default` clause in the `select` statement. The scala port
-adds separate methods that support non-blocking operations: `trySend()`, `tryRecv` and `trySelect`. There is an
+adds separate methods that support non-blocking operations: `trySend()`, `tryRecv()` and `trySelect()`. There is an
 optional timeout parameter for each of these methods. If it is not specified, all methods return immediately without
 any waiting. If the timeout is specified the methods will wait the specified amount of time if the expected conditions
 are not met. Timeout can be set to `Duration.Inf`. In this case these methods are equivalent to their blocking variants
@@ -254,12 +254,12 @@ with the exception of the type of returned value.
 
 * `trySend()` returns a boolean. If `true`, the message has been sent successfully, otherwise it is failed for whatever
    reason (maybe the channel was closed or the buffer is full).
-* `tryRecs()` returns a optional value. If there are no pending messages the method returns `None`.
-* `trySelect()` returns a optional channel. If there are no pending messages the method returns `None`.
+* `tryRecv()` returns a optional value. If there are no pending messages the method returns `None`.
+* `trySelect()` returns true if any of specified operations have executed.
 
 Here is an example of non-blocking methods:
 ```scala
-val ch1 = Channel.make[Int]
+val ch1 = Channel.make[Int](1)
 val ch2 = Channel.make[String](1)
 
 var ok = ch1.trySend(1)
@@ -274,8 +274,10 @@ println(s"msg1 <- channel1: $msg1")
 val msg2 = ch1.tryRecv()
 println(s"msg2 <- channel1: $msg2")
 
-val s = Channel.trySelect(ch1, ch2)
-println(s"selected: $s")
+val okSelect = Channel.trySelect(
+  ch1.recver{v => println(v)},
+  ch2.recver{v => println(v)})
+println(s"selected: $okSelect")
 ```
 
 Output:
@@ -283,7 +285,7 @@ Output:
 msg1 -> channel1: true
 msg2 -> channel1: false
 msg1 <- channel1: Some(1)
-msg2 <- channel1: None
+msg2 <- channel1: false
 selected: None
 ```
 
@@ -293,8 +295,7 @@ if `sclect()` returns a channel there are no guarantees that another thread won'
 thread can receive it. 
 
 Here is an example where the worker is written so it would work correctly in case channels have multiple readers and
-writers. After a channel is selected we need to make sure to receive the message only if it still available there.
-So `tryRecv()` is used to do the non-blocking check and fetch.
+writers.
 
 ```scala
 import com.github.yruslan.channel.Channel
@@ -304,14 +305,10 @@ import Channel._
 
 def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
   while(!channel1.isClosed && !channel2.isClosed) {
-    select(channel1, channel2) match {
-      case `channel1` =>
-        val msgOpt = channel1.tryRecv()
-        msgOpt.foreach(i => println(s"Int received: $i"))
-      case `channel2` =>
-        val msgOpt = channel2.tryRecv()
-        msgOpt.foreach(s => println(s"String received: $s"))
-    }
+    select(
+      channel1.recver{i => println(s"Int received: $i")},
+      channel2.recver{s => println(s"String received: $s")}
+    )
   }
 }
 
@@ -336,20 +333,6 @@ Int received: 1
 String received: abc
 Int received: 2
 String received: edef
-```
-
-The boilerplate code can be simplified using `fornew()` method which invokes a lambda function for a new message
-received from the channel. The function will be invoked without channel holding any locks, so it can take as long
-as needed to process the message.
- 
-```scala
-def worker(channel1: Channel[Int], channel2: Channel[String]): Unit = {
-  while(!channel1.isClosed && !channel2.isClosed) {
-    select(channel1, channel2) match {
-      case `channel1` => channel1.fornew( i => println(s"Int received: $i"))
-      case `channel2` => channel2.fornew( s => println(s"String received: $s"))          }
-  }
-}
 ```
 
 ## Reference

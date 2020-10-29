@@ -29,7 +29,7 @@ package com.github.yruslan.channel
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
-import com.github.yruslan.channel.Channel.selectNew
+import com.github.yruslan.channel.Channel.select
 import org.scalatest.wordspec.AnyWordSpec
 
 import scala.collection.mutable.ListBuffer
@@ -648,7 +648,7 @@ class ChannelSuite extends AnyWordSpec {
     "work with a single channel" in {
       val channel = Channel.make[Int](2)
 
-      val ok = Channel.selectNew(channel.sender(1) {})
+      val ok = Channel.select(channel.sender(1) {})
       val value = channel.tryRecv()
 
       assert(ok)
@@ -660,7 +660,7 @@ class ChannelSuite extends AnyWordSpec {
 
       def worker(workerNum: Int, ch: Channel[Int]): Unit = {
         for (i <- Range(0, 10)) {
-          val k = selectNew(
+          val k = select(
             ch.recver(n => {
               actions.append(s"R$workerNum$i-")
             }),
@@ -699,12 +699,12 @@ class ChannelSuite extends AnyWordSpec {
       var value1 = 0
       var value2 = 0
 
-      val selected1 = Channel.selectNew(
+      val selected1 = Channel.select(
         channel1.recver { v => value1 = v },
         channel2.recver { v => value1 = v }
       )
 
-      val selected2 = Channel.selectNew(
+      val selected2 = Channel.select(
         channel1.recver { v => value2 = v },
         channel2.recver { v => value2 = v })
 
@@ -726,12 +726,12 @@ class ChannelSuite extends AnyWordSpec {
         value1 = channel.recv()
       }
 
-      val selected1 = Channel.selectNew(
+      val selected1 = Channel.select(
         channel.sender(2) {},
         channel.recver { v => value2 = v }
       )
 
-      val selected2 = Channel.selectNew(
+      val selected2 = Channel.select(
         channel.sender(2) {},
         channel.recver { v => value2 = v }
       )
@@ -756,7 +756,7 @@ class ChannelSuite extends AnyWordSpec {
         }
 
         var value1 = 0
-        val selected = Channel.trySelectNew(Duration.create(200, TimeUnit.MILLISECONDS),
+        val selected = Channel.trySelect(Duration.create(200, TimeUnit.MILLISECONDS),
           channel.recver(v => value1 = v)
         )
 
@@ -773,7 +773,7 @@ class ChannelSuite extends AnyWordSpec {
         }
 
         var value1 = 0
-        val selected = Channel.trySelectNew(Duration.create(1, TimeUnit.MILLISECONDS),
+        val selected = Channel.trySelect(Duration.create(1, TimeUnit.MILLISECONDS),
           channel.recver(v => value1 = v)
         )
 
@@ -789,7 +789,7 @@ class ChannelSuite extends AnyWordSpec {
         channel.send(1)
 
         var value1 = 0
-        val selected = Channel.trySelectNew(Duration.Zero,
+        val selected = Channel.trySelect(Duration.Zero,
           channel.recver(v => value1 = v)
         )
 
@@ -801,7 +801,7 @@ class ChannelSuite extends AnyWordSpec {
         val channel = Channel.make[Int](1)
 
         var value1 = 0
-        val selected = Channel.trySelectNew(Duration.Zero,
+        val selected = Channel.trySelect(Duration.Zero,
           channel.recver(v => value1 = v)
         )
 
@@ -817,7 +817,7 @@ class ChannelSuite extends AnyWordSpec {
         channel.send(1)
 
         var value1 = 0
-        val selected = Channel.trySelectNew(Duration.Inf,
+        val selected = Channel.trySelect(Duration.Inf,
           channel.recver(v => value1 = v)
         )
 
@@ -829,7 +829,7 @@ class ChannelSuite extends AnyWordSpec {
         val channel = Channel.make[Int](1)
 
         val fut = Future {
-          Channel.trySelectNew(Duration.Inf,
+          Channel.trySelect(Duration.Inf,
             channel.recver(v => {}))
         }
 
@@ -845,7 +845,7 @@ class ChannelSuite extends AnyWordSpec {
     // Worker that operates on 2 channels
     def worker2(workerNum: Int, results: ListBuffer[String], channell: Channel[Int], channel2: Channel[String]): Unit = {
       while (!channell.isClosed && !channel2.isClosed) {
-        selectNew(
+        select(
           channell.recver { v =>
             results.synchronized {
               results += s"$workerNum->i$v"
