@@ -30,6 +30,7 @@ import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.github.yruslan.channel.Channel.select
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.wordspec.AnyWordSpec
 
 import scala.collection.mutable.ListBuffer
@@ -39,9 +40,20 @@ import scala.concurrent.duration.{Duration, SECONDS}
 // This import is required for Scala 2.13 since it has a builtin Channel object.
 import com.github.yruslan.channel.Channel
 
-class ChannelSuite extends AnyWordSpec {
-  implicit private val ec: ExecutionContextExecutor =
-    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(12))
+class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
+  implicit private var ec: ExecutionContextExecutor = _
+
+  private val ex = Executors.newFixedThreadPool(12)
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    ec = ExecutionContext.fromExecutor(ex)
+  }
+
+  override def afterAll(): Unit = {
+    ex.shutdown()
+    super.afterAll()
+  }
 
   "send() and recv()" should {
     "work for asynchronous channels in a single threaded setup" in {
