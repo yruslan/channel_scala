@@ -201,11 +201,14 @@ class SyncChannel[T] extends Channel[T] {
   }
 
   final override def isClosed: Boolean = {
-    if (syncValue.nonEmpty) {
+    lock.lock()
+    val result = if (syncValue.nonEmpty) {
       false
     } else {
       closed
     }
+    lock.unlock()
+    result
   }
 
   final override protected def hasCapacity: Boolean = {

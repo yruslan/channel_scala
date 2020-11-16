@@ -83,13 +83,17 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   }
 
   final override def foreach(f: T => Unit): Unit = {
-    while (!isClosed) {
+    while (true) {
       lock.lock()
       readers += 1
-      while (!isClosed && !hasMessages) {
+      while (!closed && !hasMessages) {
         crd.await()
       }
       readers -= 1
+      if (isClosed) {
+        lock.unlock()
+        return
+      }
 
       val valOpt = fetchValueOpt()
       lock.unlock()
