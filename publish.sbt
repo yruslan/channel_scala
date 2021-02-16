@@ -24,21 +24,35 @@
  * For more information, please refer to <http://opensource.org/licenses/MIT>
  */
 
-lazy val scala211 = "2.11.12"
-lazy val scala212 = "2.12.12"
-lazy val scala213 = "2.13.3"
+ThisBuild / scmInfo := Some(
+  ScmInfo(
+    browseUrl = url("https://github.com/yruslan/channel_scala/tree/master"),
+    connection = "scm:git:git://github.com/yruslan/channel_scala.git",
+    devConnection = "scm:git:ssh://github.com/yruslan/channel_scala.git"
+  )
+)
 
-name := "channel_scala"
-organization := "com.github.yruslan"
+ThisBuild / developers := List(
+  Developer(
+    id    = "yruslan",
+    name  = "Ruslan Iushchenko",
+    email = "yruslan@gmail.com",
+    url   = url("https://github.com/yruslan")
+  )
+)
 
-scalaVersion := scala211
-crossScalaVersions := Seq(scala211, scala212, scala213)
+ThisBuild / homepage := Some(url("https://github.com/yruslan/channel_scala"))
+ThisBuild / description := "A port of GoLang channels to Scala"
+ThisBuild / startYear := Some(2020)
+ThisBuild / licenses += "MIT" -> url("http://opensource.org/licenses/MIT")
 
-// Change this to another test framework if you prefer
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.1.4" % "test"
-
-releasePublishArtifactsAction := PgpKeys.publishSigned.value
-
-// release settings
-releaseCrossBuild := true
-addCommandAlias("releaseNow", ";set releaseVersionBump := sbtrelease.Version.Bump.Bugfix; release with-defaults")
+ThisBuild / pomIncludeRepository := { _ => false }
+ThisBuild / publishTo := {
+  val nexus = "https://oss.sonatype.org/"
+  if (isSnapshot.value) {
+    Some("snapshots" at s"${nexus}content/repositories/snapshots")
+  } else {
+    Some("releases" at s"${nexus}service/local/staging/deploy/maven2")
+  }
+}
+ThisBuild / publishMavenStyle := true
