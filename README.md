@@ -1,4 +1,5 @@
 # Channel - a port of GoLang channels to Scala 
+[![Build](https://github.com/yruslan/channel_scala/workflows/Build/badge.svg)](https://github.com/yruslan/channel_scala/actions)
 
 > Go channels provide synchronization and messaging, 'select' provides multi-way concurrent control.
 > 
