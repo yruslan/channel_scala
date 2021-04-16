@@ -276,7 +276,7 @@ object Channel {
       if (!blocking && s.sendRecv()) {
         s.afterAction()
         var j = 0
-        while (j < i) {
+        while (j <= i) {
           if (sel(j).isSender) {
             sel(j).channel.delWriterWaiter(sem)
           } else {

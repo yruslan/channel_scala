@@ -109,6 +109,7 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       val ch = Channel.make[Int]
 
       val f = Future {
+        Thread.sleep(10L)
         ch.close()
       }
 
@@ -205,6 +206,7 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
 
       assert(results == 100)
       assert(java.time.Duration.between(start, finish).toMillis >= 100L)
+      assert(java.time.Duration.between(start, finish).toMillis < 2000L)
     }
   }
 
@@ -226,7 +228,6 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       "data is not available" in {
         val ch = Channel.make[String]
 
-        ch.trySend("test1", Duration.Zero)
         val ok = ch.trySend("test2", Duration.Zero)
 
         assert(!ok)
@@ -251,7 +252,6 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
           ch.recv()
         }
 
-        ch.trySend("test1", Duration.Zero)
         val ok = ch.trySend("test", Duration.create(200, TimeUnit.MILLISECONDS))
         Await.result(f, Duration.apply(2, SECONDS))
 
@@ -294,7 +294,6 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         val ch = Channel.make[String]
 
         val f = Future {
-          ch.trySend("test1", Duration.Zero)
           ch.trySend("test2", Duration.Inf)
         }
 
@@ -318,8 +317,18 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       "data is not available" in {
         val ch = Channel.make[String](1)
 
-        ch.trySend("test1", Duration.Zero)
-        val ok = ch.trySend("test2", Duration.Zero)
+        val ok1 = ch.trySend("test1", Duration.Zero)
+        val ok2 = ch.trySend("test2", Duration.Zero)
+
+        assert(ok1)
+        assert(!ok2)
+      }
+
+      "return false if the channel is closed" in {
+        val ch = Channel.make[Int](1)
+        ch.close()
+
+        val ok = ch.trySend(2)
 
         assert(!ok)
       }
