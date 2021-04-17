@@ -81,92 +81,128 @@ class GuaranteesSuite extends AnyWordSpec {
 
       Await.result(fut, Duration.create(2, TimeUnit.SECONDS))
 
-      // At least one message from ch2 should be processed
+      // At least one message from ch1 and ch2 should be processed
+      assert(processed1Times.nonEmpty)
       assert(processed2Times.nonEmpty)
     }
   }
 
   "Fairness is provided" when {
-    "several channels are active, a channel is selected randomly" in {
-      def balancer(input1: ReadChannel[Int], input2: ReadChannel[Int], output1: WriteChannel[Int], output2: WriteChannel[Int], finishChannel: ReadChannel[Boolean]): Unit = {
-        var v: Int = 0
-        var exit = false
-
-        while (!exit) {
-          select(
-            input1.recver(x => v = x),
-            input2.recver(x => v = x),
-            finishChannel.recver(_ => exit = true)
-          )
-
-          if (!exit) {
-            select(
-              output1.sender(v) {},
-              output2.sender(v) {}
-            )
-          }
-        }
-      }
-
-      val results = new ListBuffer[(Int, Int)]
-
-      def worker(num: Int, input1: ReadChannel[Int]): Unit = {
-        input1.foreach(x => {
-          Thread.sleep(Random.nextInt(5) + 10)
-          results.synchronized {
-            results.append((num, 2 * x))
-          }
-        })
-      }
-
+    "several sync input sync output channels are active, a channel is selected randomly" in {
       val in1 = Channel.make[Int]
       val in2 = Channel.make[Int]
 
       val out1 = Channel.make[Int]
       val out2 = Channel.make[Int]
-      val finish = Channel.make[Boolean]
 
-      // Launching workers
-      val w = Range(0, 4).map(i => Future {
-        if (i % 2 == 0)
-          worker(i, out1)
-        else
-          worker(i, out2)
-      })
-
-      // Launching the load balancer
-      val bal = Future {
-        balancer(in1, in2, out1, out2, finish)
-      }
-
-      // Sending out the work
-      Range(1, 101).foreach(i => {
-        if (i % 2 == 0) {
-          in1.send(i)
-        } else {
-          in2.send(i)
-        }
-        Thread.sleep(10)
-      })
-
-      // Letting the balancer and the worker threads that the processing is finished
-      finish.send(true)
-      out1.close()
-      out2.close()
-
-      // Waiting for the futures to finish
-      w.foreach(f => Await.result(f, Duration.create(4, TimeUnit.SECONDS)))
-      Await.result(bal, Duration.create(4, TimeUnit.SECONDS))
-
-      // Correctness
-      assert(results.size == 100)
-      assert(results.map(_._2).sum == 10100) // sum(1..100)*2 = 101*50*2 = 5050*2 = 10100
-
-      // Fairness
-      val processedBy = Range(0, 4).map(w => results.count(_._1 == w))
-      assert(processedBy.min > 15)
-      assert(processedBy.max < 35)
+      testFairness(in1, in2, out1, out2)
     }
+
+    "several sync input async output channels are active, a channel is selected randomly" in {
+      val in1 = Channel.make[Int]
+      val in2 = Channel.make[Int]
+
+      val out1 = Channel.make[Int](1)
+      val out2 = Channel.make[Int](1)
+
+      testFairness(in1, in2, out1, out2)
+    }
+
+    "several async input sync output channels are active, a channel is selected randomly" in {
+      val in1 = Channel.make[Int](1)
+      val in2 = Channel.make[Int](1)
+
+      val out1 = Channel.make[Int]
+      val out2 = Channel.make[Int]
+
+      testFairness(in1, in2, out1, out2)
+    }
+
+    "several async input async output channels are active, a channel is selected randomly" in {
+      val in1 = Channel.make[Int](1)
+      val in2 = Channel.make[Int](1)
+
+      val out1 = Channel.make[Int](1)
+      val out2 = Channel.make[Int](1)
+
+      testFairness(in1, in2, out1, out2)
+    }
+  }
+
+  private def testFairness(in1: Channel[Int], in2: Channel[Int], out1: Channel[Int], out2: Channel[Int]): Unit = {
+    val results = new ListBuffer[(Int, Int)]
+
+    def balancer(input1: ReadChannel[Int], input2: ReadChannel[Int], output1: WriteChannel[Int], output2: WriteChannel[Int], finishChannel: ReadChannel[Boolean]): Unit = {
+      var v: Int = 0
+      var exit = false
+
+      while (!exit) {
+        select(
+          input1.recver(x => v = x),
+          input2.recver(x => v = x),
+          finishChannel.recver(_ => exit = true)
+        )
+
+        if (!exit) {
+          select(
+            output1.sender(v) {},
+            output2.sender(v) {}
+          )
+        }
+      }
+    }
+
+    def worker(num: Int, input1: ReadChannel[Int]): Unit = {
+      input1.foreach(x => {
+        Thread.sleep(Random.nextInt(5) + 10)
+        results.synchronized {
+          results.append((num, 2 * x))
+        }
+      })
+    }
+
+    val finish = Channel.make[Boolean]
+
+    // Launching workers
+    val w = Range(0, 4).map(i => Future {
+      if (i % 2 == 0)
+        worker(i, out1)
+      else
+        worker(i, out2)
+    })
+
+    // Launching the load balancer
+    val bal = Future {
+      balancer(in1, in2, out1, out2, finish)
+    }
+
+    // Sending out the work
+    Range(1, 101).foreach(i => {
+      if (i % 2 == 0) {
+        in1.send(i)
+      } else {
+        in2.send(i)
+      }
+      Thread.sleep(10)
+    })
+
+    // Letting the balancer and the worker threads that the processing is finished
+    finish.send(true)
+    out1.close()
+    out2.close()
+
+    // Waiting for the futures to finish
+    w.foreach(f => Await.result(f, Duration.create(4, TimeUnit.SECONDS)))
+    Await.result(bal, Duration.create(4, TimeUnit.SECONDS))
+
+    // Correctness
+    assert(results.size == 100)
+    assert(results.map(_._2).sum == 10100) // sum(1..100)*2 = 101*50*2 = 5050*2 = 10100
+
+    // Fairness
+    val processedBy = Range(0, 4).map(w => results.count(_._1 == w))
+    assert(processedBy.min > 15)
+    assert(processedBy.max < 35)
   }
 
 }
