@@ -341,3 +341,10 @@ String received: edef
 ## Reference
 
 *ToDo*
+
+## Changelog
+- #### 0.1.1 released May 11, 2021.
+   - Fix one corner cae of trySelect().
+
+- #### 0.1.0 released Feb 17, 2021.
+   - The initial release.
