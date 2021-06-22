@@ -515,11 +515,15 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
           ch.send("test")
         }
 
+        val start = Instant.now()
         val v = ch.tryRecv(Duration.create(200, TimeUnit.MILLISECONDS))
         Await.result(f, Duration.apply(2, SECONDS))
+        val finish = Instant.now()
 
         assert(v.isDefined)
         assert(v.contains("test"))
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L)
+        assert(java.time.Duration.between(start, finish).toMillis < 200L)
       }
 
       "timeout is expired" in {
@@ -642,14 +646,17 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         })
       }
 
+      val start = Instant.now()
       ch.send(1)
       ch.send(2)
       ch.send(3)
       ch.close()
+      val finish = Instant.now()
 
       Await.ready(fut, Duration.create(2, TimeUnit.SECONDS))
 
       assert(values.toList == 1 :: 2 :: 3 :: Nil)
+      assert(java.time.Duration.between(start, finish).toMillis < 2000L)
     }
 
     "iterate through all values of a asynchronous channel" in {
