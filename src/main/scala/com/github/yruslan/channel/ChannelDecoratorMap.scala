@@ -25,16 +25,22 @@
  */
 
 package com.github.yruslan.channel
+import com.github.yruslan.channel.impl.Selector
 
-import java.util.concurrent.Semaphore
+import scala.concurrent.duration.Duration
 
-trait ChannelLike {
-  def isClosed: Boolean
+class ChannelDecoratorMap[T, U](inputChannel: ReadChannel[T], f: T => U) extends ChannelDecorator[T](inputChannel) with ReadChannel[U] {
+  override def recv(): U = f(inputChannel.recv())
 
-  private [channel] def hasMessagesStatus: Int
-  private [channel] def hasFreeCapacityStatus: Int
-  private [channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean
-  private [channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean
-  private [channel] def delReaderWaiter(sem: Semaphore): Unit
-  private [channel] def delWriterWaiter(sem: Semaphore): Unit
+  override def tryRecv(): Option[U] = inputChannel.tryRecv().map(f)
+
+  override def tryRecv(timeout: Duration): Option[U] = inputChannel.tryRecv(timeout).map(f)
+
+  override def recver(action: U => Unit): Selector = inputChannel.recver(t => action(f(t)))
+
+  override def fornew(action: U => Unit): Unit = inputChannel.fornew(t => action(f(t)))
+
+  override def foreach(action: U => Unit): Unit = inputChannel.foreach(t => action(f(t)))
+
+  override def map[K](mapFunction: U => K): ReadChannel[K] = new ChannelDecoratorMap[U, K](this, mapFunction)
 }
