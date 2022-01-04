@@ -338,6 +338,28 @@ Int received: 2
 String received: edef
 ```
 
+### Scala-specific channel features
+Since Scala is a functional language, this implementation of channels supports functors.
+
+#### map()
+
+```scala
+// Creating a channel of integers
+val chInt = Channel.make[Int](2)
+
+// The channel of strings is the result of mapping the channel of integer 
+val chString = ch1.map(v => v.toString)
+
+// Send some integers
+chInt.send(1)
+chInt.send(2)
+chInt.close()
+
+// Receive some strings
+val s1: String = chString.recv()
+val s2: String = chString.recv()
+```
+
 ## Reference
 
 *ToDo*

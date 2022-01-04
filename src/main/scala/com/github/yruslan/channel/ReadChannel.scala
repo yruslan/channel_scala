@@ -39,4 +39,6 @@ trait ReadChannel[T] extends ChannelLike {
 
   def fornew(f: T => Unit): Unit
   def foreach(f: T => Unit): Unit
+
+  def map[U](f: T => U): ReadChannel[U]
 }
