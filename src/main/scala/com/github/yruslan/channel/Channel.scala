@@ -102,10 +102,6 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  final override def map[U](f: T => U): ReadChannel[U] = {
-    new ChannelDecoratorMap[T, U](this, f)
-  }
-
   protected def fetchValueOpt(): Option[T]
 
   final override def sender(value: T) (action: => Unit = {}): Selector = {

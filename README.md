@@ -348,7 +348,7 @@ Since Scala is a functional language, this implementation of channels supports f
 val chInt = Channel.make[Int](2)
 
 // The channel of strings is the result of mapping the channel of integer 
-val chString = ch1.map(v => v.toString)
+val chString = chInt.map(v => v.toString)
 
 // Send some integers
 chInt.send(1)
@@ -358,6 +358,26 @@ chInt.close()
 // Receive some strings
 val s1: String = chString.recv()
 val s2: String = chString.recv()
+```
+
+#### filter()
+
+```scala
+// Creating a channel of integers
+val ch1 = Channel.make[Int](3)
+
+// Filter the original channel 
+val chFiltered = ch1.filter(v => v != 2)
+
+// Send some integers
+ch1.send(1)
+ch1.send(2)
+ch1.send(3)
+ch1.close()
+
+// Receive filtered values
+val v1 = chFiltered.recv() // 1
+val v2 = chFiltered.recv() // 3
 ```
 
 ## Reference
