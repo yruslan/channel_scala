@@ -41,6 +41,4 @@ class ChannelDecoratorMap[T, U](inputChannel: ReadChannel[T], f: T => U) extends
   override def fornew(action: U => Unit): Unit = inputChannel.fornew(t => action(f(t)))
 
   override def foreach(action: U => Unit): Unit = inputChannel.foreach(t => action(f(t)))
-
-  override def map[K](mapFunction: U => K): ReadChannel[K] = new ChannelDecoratorMap[U, K](this, mapFunction)
 }
