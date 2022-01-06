@@ -81,7 +81,7 @@ class ChannelDecoratorFilter[T](inputChannel: ReadChannel[T], pred: T => Boolean
 
   override def recver(action: T => Unit): Selector = inputChannel.recver(t => if (pred(t)) action(t))
 
-  override def fornew(action: T => Unit): Unit = inputChannel.fornew(t => if (pred(t)) action(t))
+  override def fornew[U](action: T => U): Unit = inputChannel.fornew(t => if (pred(t)) action(t))
 
-  override def foreach(action: T => Unit): Unit = inputChannel.foreach(t => if (pred(t)) action(t))
+  override def foreach[U](action: T => U): Unit = inputChannel.foreach(t => if (pred(t)) action(t))
 }

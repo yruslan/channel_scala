@@ -866,7 +866,38 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         }
       }
     }
+  }
 
+  "toList" should {
+    "covert a channel to a list" in {
+      val ch1 = Channel.make[Int](3)
+
+      ch1.send(1)
+      ch1.send(2)
+      ch1.send(3)
+      ch1.close()
+
+      val lst = ch1.toList
+
+      assert(lst == List(1, 2, 3))
+    }
+
+    "convert a mapped filtered channel to a list" in {
+      val ch1 = Channel.make[Int](3)
+
+      val ch2 = ch1
+        .map(v => v * 2)
+        .filter(v => v != 4)
+
+      ch1.send(1)
+      ch1.send(2)
+      ch1.send(3)
+      ch1.close()
+
+      val lst = ch2.toList
+
+      assert(lst == List(2, 6))
+    }
   }
 
   "master/worker model" should {
