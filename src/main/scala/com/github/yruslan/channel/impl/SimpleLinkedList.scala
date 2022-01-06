@@ -108,7 +108,7 @@ class SimpleLinkedList[T] {
     count = 0
   }
 
-  def foreach(f: T => Unit): Unit = this.synchronized {
+  def foreach[U](f: T => U): Unit = this.synchronized {
     var p = first
     while (p != null) {
       f(p.el)
