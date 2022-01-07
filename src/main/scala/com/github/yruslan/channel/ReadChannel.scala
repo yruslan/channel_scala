@@ -43,6 +43,7 @@ trait ReadChannel[T] extends ChannelLike {
 
   def map[U](f: T => U): ReadChannel[U] = new ChannelDecoratorMap[T, U](this, f)
   def filter(f: T => Boolean): ReadChannel[T] = new ChannelDecoratorFilter[T](this, f)
+  def withFilter(f: T => Boolean): ReadChannel[T] = new ChannelDecoratorFilter[T](this, f)
 
   def toList: List[T] = {
     val lst = new ListBuffer[T]

@@ -898,6 +898,26 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
 
       assert(lst == List(2, 6))
     }
+
+    "test for comprehension" in {
+      val ch1 = Channel.make[Int](3)
+
+      val ch2 = ch1
+        .map(v => v * 2)
+        .filter(v => v != 4)
+
+      ch1.send(1)
+      ch1.send(2)
+      ch1.send(3)
+      ch1.close()
+
+      val outputChannel = for {
+        a <- ch2
+        if a > 5
+      } yield a
+
+      assert(outputChannel.recv() == 6)
+    }
   }
 
   "master/worker model" should {

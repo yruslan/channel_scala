@@ -339,9 +339,11 @@ String received: edef
 ```
 
 ### Scala-specific channel features
-Since Scala is a functional language, this implementation of channels supports functors.
+Since Scala is a functional language, this implementation of channels supports functional operations used in for comprehension.
 
 #### map()
+
+You can lazy map messages in a channel.
 
 ```scala
 // Creating a channel of integers
@@ -362,22 +364,68 @@ val s2: String = chString.recv()
 
 #### filter()
 
+You can lazy filer messages in a channel.
+
 ```scala
 // Creating a channel of integers
-val ch1 = Channel.make[Int](3)
+val chInput = Channel.make[Int](3)
 
 // Filter the original channel 
-val chFiltered = ch1.filter(v => v != 2)
+val chFiltered = chInput.filter(v => v != 2)
 
 // Send some integers
-ch1.send(1)
-ch1.send(2)
-ch1.send(3)
-ch1.close()
+chInput.send(1)
+chInput.send(2)
+chInput.send(3)
+chInput.close()
 
 // Receive filtered values
 val v1 = chFiltered.recv() // 1
 val v2 = chFiltered.recv() // 3
+```
+
+#### for() comprehension
+
+You can use `for` comprehension for channels.
+
+```scala
+// Creating a channel of integers
+val chInput = Channel.make[Int](3)
+
+// Applying maps and filters
+val chOutput = chInput
+  .map(v => v * 2)
+  .filter(v => v != 4)
+
+// Sending values to the input channel
+chInput.send(1)
+chInput.send(2)
+chInput.send(3)
+chInput.close()
+
+// Traversing the output channel using for comprehension
+for {
+  a <- chOutput
+  if a > 5
+} println(a)
+
+// Outputs:
+// 6
+```
+
+#### toList
+
+You can convert a channel to `List` by collecting all messages. This operation will block until the channel is closed.
+
+```scala
+val chInput = Channel.make[Int](3)
+
+chInput.send(1)
+chInput.send(2)
+chInput.send(3)
+chInput.close()
+
+val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Reference
