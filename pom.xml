@@ -4,20 +4,19 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.github.yruslan</groupId>
-    <artifactId>channel_scala_2.11</artifactId>
+    <artifactId>channel_scala_2.13</artifactId>
 
     <packaging>jar</packaging>
-    <version>0.1.1-SNAPSHOT</version>
+    <version>0.1.2-SNAPSHOT</version>
 
     <properties>
         <encoding>UTF-8</encoding>
         <maven.compiler.source>1.6</maven.compiler.source>
         <maven.compiler.target>1.6</maven.compiler.target>
         <maven.scala.version>3.2.2</maven.scala.version>
-        <scala.version>2.11.12</scala.version>
-        <scala.compat.version>2.11</scala.compat.version>
-        <specs.version>2.4.16</specs.version>
-        <scalatest.version>3.1.4</scalatest.version>
+        <scala.version>2.13.7</scala.version>
+        <scala.compat.version>2.13</scala.compat.version>
+        <scalatest.version>3.2.9</scalatest.version>
         <scalatest.maven.version>1.0</scalatest.maven.version>
     </properties>
 
@@ -36,7 +35,6 @@
             <version>${scalatest.version}</version>
             <scope>test</scope>
         </dependency>
-
     </dependencies>
 
     <build>
@@ -71,26 +69,11 @@
                 </executions>
             </plugin>
 
-            <!-- disable surefire -->
-            <plugin>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.19.1</version>
-                <configuration>
-                    <skipTests>true</skipTests>
-                </configuration>
-            </plugin>
-
             <!-- enable scalatest -->
             <plugin>
                 <groupId>org.scalatest</groupId>
                 <artifactId>scalatest-maven-plugin</artifactId>
                 <version>${scalatest.maven.version}</version>
-                <configuration>
-                    <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
-                    <junitxml>.</junitxml>
-                    <filereports>WDF TestSuite.txt</filereports>
-                    <argLine>-Xmx1024m</argLine>
-                </configuration>
                 <executions>
                     <execution>
                         <id>test</id>
