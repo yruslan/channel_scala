@@ -899,7 +899,7 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       assert(lst == List(2, 6))
     }
 
-    "test for comprehension" in {
+    "test for comprehension with yield" in {
       val ch1 = Channel.make[Int](3)
 
       val ch2 = ch1
@@ -917,6 +917,56 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       } yield a
 
       assert(outputChannel.recv() == 6)
+    }
+
+    "test for comprehension with foreach" in {
+      val ch1 = Channel.make[Int](3)
+
+      val ch2 = ch1
+        .map(v => v * 2)
+        .filter(v => v != 4)
+
+      ch1.send(1)
+      ch1.send(2)
+      ch1.send(3)
+      ch1.close()
+
+      var out = 0
+      for {
+        a <- ch2
+        if a > 5
+      } out = a
+
+      assert(out == 6)
+    }
+
+    "test for comprehension with 2 channels" in {
+      val ch1 = Channel.make[Int](3)
+      val ch2 = Channel.make[Int](3)
+
+      val ch3 = ch1
+        .map(v => v * 2)
+        .filter(v => v != 4)
+
+      ch1.send(1)
+      ch1.send(2)
+      ch1.send(3)
+      ch1.close()
+
+      ch2.send(100)
+      ch2.send(200)
+      ch2.send(300)
+      ch2.close()
+
+      var out = 0
+      for {
+        a <- ch2
+        b <- ch3
+        if a > 5
+        if b > 5
+      } out = a + b
+
+      assert(out == 106)
     }
   }
 
