@@ -166,18 +166,19 @@ class ChannelFilterSuite extends AnyWordSpec {
     }
 
     "filter input channel on fornew()" in {
-      val ch1 = Channel.make[Int](2)
+      val ch1 = Channel.make[Int](3)
 
       val ch2 = ch1.filter(v => v != 2)
 
       ch1.send(1)
       ch1.send(2)
+      ch1.send(3)
 
       var v1 = 0
 
       ch2.fornew(v => v1 = v)
 
-      assert(v1 == 1)
+      assert(v1 == 3)
     }
 
     "filter input channel on foreach()" in {

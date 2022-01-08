@@ -605,8 +605,10 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         ch.fornew(v => processed += v)
 
         assert(processed.nonEmpty)
-        assert(processed.size == 1)
+        assert(processed.size == 3)
         assert(processed.head == "test1")
+        assert(processed(1) == "test2")
+        assert(processed(2) == "test3")
       }
 
       "there are no data" in {
@@ -887,7 +889,8 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
 
       assert(lst == List(2, 6))
     }
-
+  }
+  "for comprehension" should {
     "test for comprehension with yield" in {
       val ch1 = Channel.make[Int](3)
 

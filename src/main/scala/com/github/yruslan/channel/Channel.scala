@@ -67,8 +67,12 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   }
 
   final override def fornew[U](f: T => U): Unit = {
-    val valueOpt = tryRecv()
-    valueOpt.foreach(v => f(v))
+    var valueOpt = tryRecv()
+
+    while (valueOpt.nonEmpty) {
+      valueOpt.foreach(v => f(v))
+      valueOpt = tryRecv()
+    }
   }
 
   final override def foreach[U](f: T => U): Unit = {
