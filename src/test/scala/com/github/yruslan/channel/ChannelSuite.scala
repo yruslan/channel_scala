@@ -677,7 +677,8 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     "ping pong messages between 2 workers" in {
       val actions = new StringBuffer()
 
-      def worker(workerNum: Int, ch: Channel[Int]): Unit = {
+      /* Full qualified name 'com.github.yruslan.channel.Channel' is used here to make IntelliJ IDEA happy. */
+      def worker(workerNum: Int, ch: com.github.yruslan.channel.Channel[Int]): Unit = {
         for (i <- Range(0, 10)) {
           val k = select(
             ch.recver(n => {
@@ -964,7 +965,10 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
 
   "master/worker model" should {
     // Worker that operates on 2 channels
-    def worker2(workerNum: Int, results: ListBuffer[String], channell: Channel[Int], channel2: Channel[String]): Unit = {
+    def worker2(workerNum: Int,
+                results: ListBuffer[String],
+                channell: ReadChannel[Int],
+                channel2: ReadChannel[String]): Unit = {
       while (!channell.isClosed && !channel2.isClosed) {
         select(
           channell.recver { v =>
