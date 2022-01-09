@@ -118,7 +118,11 @@ class GuaranteesSuite extends AnyWordSpec {
     }
   }
 
-  private def testFairness(in1: Channel[Int], in2: Channel[Int], out1: Channel[Int], out2: Channel[Int]): Unit = {
+  /* Full qualified name 'com.github.yruslan.channel.Channel' is used here to make IntelliJ IDEA happy. */
+  private def testFairness(in1: com.github.yruslan.channel.Channel[Int],
+                           in2: com.github.yruslan.channel.Channel[Int],
+                           out1: com.github.yruslan.channel.Channel[Int],
+                           out2: com.github.yruslan.channel.Channel[Int]): Unit = {
     val results = new ListBuffer[(Int, Int)]
 
     def balancer(input1: ReadChannel[Int], input2: ReadChannel[Int], output1: WriteChannel[Int], output2: WriteChannel[Int], finishChannel: ReadChannel[Boolean]): Unit = {
