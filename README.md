@@ -338,6 +338,38 @@ Int received: 2
 String received: edef
 ```
 
+### A balancer example
+Here is example function that balances inputs from two channels into two output channels.
+Notice that `select()` is used to wait for any of the channels to have an incoming message, as well as
+to select a free output channel. You can mix `sender()` and `recver()` calls in the same `select()` statement.
+A finish channel is used to signal the end of the balancing process.
+
+```scala
+def balancer(input1: ReadChannel[Int],
+             input2: ReadChannel[Int],
+             output1: WriteChannel[Int],
+             output2: WriteChannel[Int],
+             finishChannel: ReadChannel[Boolean]): Unit = {
+  var v: Int = 0
+  var exit = false
+
+  while (!exit) {
+    select(
+      input1.recver(x => v = x),
+      input2.recver(x => v = x),
+      finishChannel.recver(_ => exit = true)
+    )
+
+    if (!exit) {
+      select(
+        output1.sender(v) {},
+        output2.sender(v) {}
+      )
+    }
+  }
+}
+```
+
 ### Scala-specific channel features
 Since Scala is a functional language, this implementation of channels supports functional operations used in for comprehension.
 

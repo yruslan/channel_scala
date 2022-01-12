@@ -125,7 +125,11 @@ class GuaranteesSuite extends AnyWordSpec {
                            out2: com.github.yruslan.channel.Channel[Int]): Unit = {
     val results = new ListBuffer[(Int, Int)]
 
-    def balancer(input1: ReadChannel[Int], input2: ReadChannel[Int], output1: WriteChannel[Int], output2: WriteChannel[Int], finishChannel: ReadChannel[Boolean]): Unit = {
+    def balancer(input1: ReadChannel[Int],
+                 input2: ReadChannel[Int],
+                 output1: WriteChannel[Int],
+                 output2: WriteChannel[Int],
+                 finishChannel: ReadChannel[Boolean]): Unit = {
       var v: Int = 0
       var exit = false
 
