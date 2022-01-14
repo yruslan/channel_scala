@@ -460,13 +460,12 @@ chInput.close()
 val lst = chInput.toList // List(1, 2, 3)
 ```
 
-## Reference
-
-*ToDo*
-
 ## Changelog
+- #### 0.1.2 released Jan 13, 2022.
+   - Add support for `map()`, `filter()` and `for` comprehension for channels.
+
 - #### 0.1.1 released May 11, 2021.
-   - Fix one corner cae of trySelect().
+   - Fix one corner case of trySelect().
 
 - #### 0.1.0 released Feb 17, 2021.
    - The initial release.
