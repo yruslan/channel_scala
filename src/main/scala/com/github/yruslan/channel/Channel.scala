@@ -222,6 +222,16 @@ object Channel {
   }
 
   /**
+    * Create an unbounded asynchronous channel.
+    *
+    * @tparam T The type of the channel.
+    * @return A new channel
+    */
+  def makeUnbounded[T]: Channel[T] = {
+    new AsyncChannel[T](Int.MaxValue)
+  }
+
+  /**
    * Waits for a non-blocking operation to be available on the list of channels.
    *
    * @param selector  A first channel to wait for (mandatory).
