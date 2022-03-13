@@ -197,6 +197,27 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       assert(java.time.Duration.between(start, finish).toMillis >= 100L)
       assert(java.time.Duration.between(start, finish).toMillis < 2000L)
     }
+
+    "unbounded channels should non-block" in {
+      val ch = Channel.makeUnbounded[Int]
+
+      Range(0, 10000).foreach { i =>
+        ch.send(i)
+      }
+
+      ch.close()
+
+      val v1 = ch.recv()
+
+      Range(0, 9998).foreach { i =>
+        ch.recv()
+      }
+
+      val v2 = ch.recv()
+
+      assert(v1 == 0)
+      assert(v2 == 9999)
+    }
   }
 
   "trySend() for sync channels" should {
