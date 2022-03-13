@@ -87,6 +87,32 @@ buffered
 channel
 ```
 
+### Channels with unbounded buffer
+
+Some use cases require limited but unknown buffer size in order to satisfy progress guarantees. This port of channels
+library supports unbounded channels.
+
+```scala
+import com.github.yruslan.channel.Channel
+
+val channel = Channel.makeUnbounded[String]
+
+channel.send("unbounded")
+channel.send("buffered")
+channel.send("channel")
+
+println(channel.recv())
+println(channel.recv())
+println(channel.recv())
+
+```
+Output:
+```
+unbounded
+buffered
+channel
+```
+
 ### Channel synchronization
 
 Channels can be used for synchronization. Here we use a channel to wait for a job executing in another thread
@@ -461,6 +487,9 @@ val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Changelog
+- #### 0.1.3 released Mar 13, 2022.
+   - Add support for unbounded channels (use `Channel.makeUnbounded[MyType]()`.
+
 - #### 0.1.2 released Jan 13, 2022.
    - Add support for `map()`, `filter()` and `for` comprehension for channels.
 
