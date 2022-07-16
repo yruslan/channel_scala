@@ -28,10 +28,10 @@ package com.github.yruslan.utils
 
 import org.scalatest.wordspec.AnyWordSpec
 
-class LRUCacheSuite extends AnyWordSpec {
+class LRUCacheSuite2 extends AnyWordSpec {
   "LRUCache" should {
     "remember items put there" in {
-      val cache = new LRUCache[Int, String](3)
+      val cache = new LRUCache2[Int, String](3)
       cache.put(1, "one")
       cache.put(2, "two")
       cache.put(3, "three")
@@ -41,7 +41,7 @@ class LRUCacheSuite extends AnyWordSpec {
     }
 
     "forget old items" in {
-      val cache = new LRUCache[Int, String](3)
+      val cache = new LRUCache2[Int, String](3)
       cache.put(1, "one")
       cache.put(2, "two")
       cache.put(3, "three")
@@ -53,7 +53,7 @@ class LRUCacheSuite extends AnyWordSpec {
     }
 
     "remember frequently used items" in {
-      val cache = new LRUCache[Int, String](3)
+      val cache = new LRUCache2[Int, String](3)
       cache.put(1, "one")
       cache.put(2, "two")
       cache.put(3, "three")
@@ -68,7 +68,7 @@ class LRUCacheSuite extends AnyWordSpec {
     }
 
     "allow invalidating of values" in {
-      val cache = new LRUCache[Int, String](3)
+      val cache = new LRUCache2[Int, String](3)
       cache.put(1, "one")
       cache.put(2, "two")
       cache.put(3, "three")
@@ -80,12 +80,12 @@ class LRUCacheSuite extends AnyWordSpec {
 
       assert(cache(1) == "one")
       assert(cache(2) == "two")
-      assert(cache(3) == null)
+      assert(cache.get(3) == None)
       assert(cache(4) == "four")
     }
 
     "have the expected performance" in {
-      val cache = new LRUCache[Int, String](1000)
+      val cache = new LRUCache2[Int, String](1000)
       val n = 1000000
       val start = System.nanoTime()
       for (i <- 1 to n) {
@@ -102,7 +102,7 @@ class LRUCacheSuite extends AnyWordSpec {
         cache.get(i)
       }
       val end2 = System.nanoTime()
-      assert(end - start < 1000000000L)
+      assert(end2 - start2 < 1000000000L)
 
       println("Time: " + (end2 - start2) / 1000000000.0 + " seconds")
     }
