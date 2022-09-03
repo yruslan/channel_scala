@@ -1064,4 +1064,20 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     }
   }
 
+  "channel casting" should {
+    "support covariance" in {
+      val ch1 = Channel.make[String](1)
+      val ch2: ReadChannel[Any] = ch1
+      ch1.send("hello")
+      assert(ch2.recv() == "hello")
+    }
+
+    "support contravariance" in {
+      val ch1 = Channel.make[Any](1)
+      val ch2: WriteChannel[String] = ch1
+      ch2.send("hello")
+      assert(ch1.recv() == "hello")
+    }
+  }
+
 }
