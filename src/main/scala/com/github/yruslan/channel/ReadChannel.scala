@@ -20,7 +20,7 @@ import com.github.yruslan.channel.impl.Selector
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 
-trait ReadChannel[T] extends ChannelLike {
+trait ReadChannel[+T] extends ChannelLike {
   def recv(): T
   def tryRecv(): Option[T]
   def tryRecv(timeout: Duration): Option[T]
