@@ -487,6 +487,12 @@ val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Changelog
+- #### 0.1.4 released Sep 8, 2022.
+    - Add covariance for read-only channels.
+      - E.g. `val ch1: ReadChannel[Animal] = ch2: ReadChannel[Dog]`.
+    - Add contravariance for write-only channels.
+      - E.g. `val ch1: Writehannel[Dog] = ch2: Writehannel[Animal]`.
+
 - #### 0.1.3 released Mar 13, 2022.
    - Add support for unbounded channels (use `Channel.makeUnbounded[MyType]()`.
 
