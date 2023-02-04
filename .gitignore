@@ -32,5 +32,3 @@ build.log
 
 .cache*
 dependency-reduced-pom.xml
-project/build.properties
-
