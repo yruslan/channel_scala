@@ -14,8 +14,8 @@
  */
 
 lazy val scala211 = "2.11.12"
-lazy val scala212 = "2.12.16"
-lazy val scala213 = "2.13.8"
+lazy val scala212 = "2.12.17"
+lazy val scala213 = "2.13.10"
 
 name := "channel_scala"
 organization := "com.github.yruslan"
@@ -23,7 +23,7 @@ organization := "com.github.yruslan"
 scalaVersion := scala211
 crossScalaVersions := Seq(scala211, scala212, scala213)
 
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
 
 releasePublishArtifactsAction := PgpKeys.publishSigned.value
 
