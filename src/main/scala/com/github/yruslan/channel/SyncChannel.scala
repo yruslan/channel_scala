@@ -22,6 +22,7 @@ import scala.concurrent.duration.Duration
 class SyncChannel[T] extends Channel[T] {
   protected var syncValue: Option[T] = None
 
+  @throws[InterruptedException]
   final override def close(): Unit = {
     lock.lock()
     try {
@@ -34,7 +35,7 @@ class SyncChannel[T] extends Channel[T] {
 
         writers += 1
         while (syncValue.nonEmpty) {
-          cwr.await()
+          awaitWriters()
         }
         writers -= 1
       }
@@ -43,6 +44,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def send(value: T): Unit = {
     lock.lock()
     try {
@@ -52,14 +54,14 @@ class SyncChannel[T] extends Channel[T] {
 
       writers += 1
       while (syncValue.nonEmpty && !closed) {
-        cwr.await()
+        awaitWriters()
       }
       if (!closed) {
         syncValue = Option(value)
         notifyReaders()
 
         while (syncValue.nonEmpty && !closed) {
-          cwr.await()
+          awaitWriters()
         }
         notifyWriters()
       }
@@ -88,6 +90,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def trySend(value: T, timeout: Duration): Boolean = {
     if (timeout == Duration.Zero) {
       return trySend(value)
@@ -100,7 +103,7 @@ class SyncChannel[T] extends Channel[T] {
       writers += 1
       var isTimeoutExpired = false
       while (!closed && !hasCapacity && !isTimeoutExpired) {
-        isTimeoutExpired = !awaiter.await(cwr)
+        isTimeoutExpired = !awaitWriters(awaiter)
       }
 
       val isSucceeded = syncValue match {
@@ -122,6 +125,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def recv(): T = {
     lock.lock()
     try {
@@ -130,7 +134,7 @@ class SyncChannel[T] extends Channel[T] {
         notifyWriters()
       }
       while (!closed && syncValue.isEmpty) {
-        crd.await()
+        awaitReaders()
       }
 
       if (closed && syncValue.isEmpty) {
@@ -167,6 +171,7 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def tryRecv(timeout: Duration): Option[T] = {
     if (timeout == Duration.Zero) {
       return tryRecv()
@@ -179,7 +184,7 @@ class SyncChannel[T] extends Channel[T] {
       readers += 1
       var isTimeoutExpired = false
       while (!closed && !hasMessages && !isTimeoutExpired) {
-        isTimeoutExpired = !awaiter.await(crd)
+        isTimeoutExpired = !awaitReaders(awaiter)
       }
       readers -= 1
 

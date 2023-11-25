@@ -20,8 +20,12 @@ import com.github.yruslan.channel.impl.Selector
 import scala.concurrent.duration.Duration
 
 trait WriteChannel[-T] extends ChannelLike {
+  @throws[InterruptedException]
   def send(value: T): Unit
+
   def trySend(value: T): Boolean
+
+  @throws[InterruptedException]
   def trySend(value: T, timeout: Duration): Boolean
 
   def sender(value: T)(action: => Unit): Selector

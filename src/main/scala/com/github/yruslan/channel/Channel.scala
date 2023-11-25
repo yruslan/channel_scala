@@ -17,8 +17,7 @@ package com.github.yruslan.channel
 
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
-
-import com.github.yruslan.channel.impl.{Selector, SimpleLinkedList}
+import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList}
 
 import scala.concurrent.duration.Duration
 
@@ -75,12 +74,13 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def foreach[U](f: T => U): Unit = {
     while (true) {
       lock.lock()
       readers += 1
       while (!closed && !hasMessages) {
-        crd.await()
+        awaitReaders()
       }
       readers -= 1
       if (isClosed) {
@@ -186,6 +186,54 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected def hasCapacity: Boolean
 
   protected def hasMessages: Boolean
+
+  @throws[InterruptedException]
+  final protected def awaitWriters(): Unit = {
+    try {
+      cwr.await()
+    } catch {
+      case ex: InterruptedException =>
+        writers -= 1
+        cwr.signal()
+        throw ex
+    }
+  }
+
+  @throws[InterruptedException]
+  final protected def awaitWriters(awaiter: Awaiter): Boolean = {
+    try {
+      awaiter.await(cwr)
+    } catch {
+      case ex: InterruptedException =>
+        writers -= 1
+        cwr.signal()
+        throw ex
+    }
+  }
+
+  @throws[InterruptedException]
+  final protected def awaitReaders(): Unit = {
+    try {
+      crd.await()
+    } catch {
+      case ex: InterruptedException =>
+        readers -= 1
+        crd.signal()
+        throw ex
+    }
+  }
+
+  @throws[InterruptedException]
+  final protected def awaitReaders(awaiter: Awaiter): Boolean = {
+    try {
+      awaiter.await(crd)
+    } catch {
+      case ex: InterruptedException =>
+        readers -= 1
+        crd.signal()
+        throw ex
+    }
+  }
 }
 
 object Channel {
@@ -261,6 +309,7 @@ object Channel {
    * @param selectors Other channels to wait for.
    * @return true if one of pending operations wasn't blockingю
    */
+  @throws[InterruptedException]
   def trySelect(timout: Duration, selector: Selector, selectors: Selector*): Boolean = {
     val sem = new Semaphore(0)
 
@@ -277,16 +326,8 @@ object Channel {
         s.channel.ifEmptyAddReaderWaiter(sem)
       }
       if (!blocking && s.sendRecv()) {
+        removeWaiters(sem, sel, i + 1)
         s.afterAction()
-        var j = 0
-        while (j <= i) {
-          if (sel(j).isSender) {
-            sel(j).channel.delWriterWaiter(sem)
-          } else {
-            sel(j).channel.delReaderWaiter(sem)
-          }
-          j += 1
-        }
         return true
       }
       i += 1
@@ -297,52 +338,36 @@ object Channel {
       i = 0
       while (i < sel.length) {
         val s = sel(i)
-        if (s.isSender) {
-          val status = s.channel.hasFreeCapacityStatus
-          if (status == AVAILABLE && s.sendRecv()) {
-            s.afterAction()
-            var j = 0
-            while (j < sel.length) {
-              sel(j).channel.delWriterWaiter(sem)
-              j += 1
-            }
-            return true
-          } else if (status == CLOSED) {
-            return false
-          }
-        } else {
-          val status = s.channel.hasMessagesStatus
-          if (status == AVAILABLE && s.sendRecv()) {
-            s.afterAction()
-            var j = 0
-            while (j < sel.length) {
-              sel(j).channel.delReaderWaiter(sem)
-              j += 1
-            }
-            return true
-          } else if (status == CLOSED) {
-            return false
-          }
+        val status = if (s.isSender)
+          s.channel.hasFreeCapacityStatus
+        else
+          s.channel.hasMessagesStatus
+
+        if (status == AVAILABLE && s.sendRecv()) {
+          removeWaiters(sem, sel, sel.length)
+          s.afterAction()
+          return true
+        } else if (status == CLOSED) {
+          return false
         }
         i += 1
       }
 
-      val success = if (timout.isFinite) {
-        sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
-      } else {
-        sem.acquire()
-        true
-      }
-      if (!success) {
-        var j = 0
-        while (j < sel.length) {
-          if (sel(j).isSender) {
-            sel(j).channel.delWriterWaiter(sem)
-          } else {
-            sel(j).channel.delReaderWaiter(sem)
-          }
-          j += 1
+      val success = try {
+        if (timout.isFinite) {
+          sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
+        } else {
+          sem.acquire()
+          true
         }
+      } catch {
+        case ex: InterruptedException =>
+          removeWaiters(sem, sel, sel.length)
+          throw ex
+      }
+
+      if (!success) {
+        removeWaiters(sem, sel, sel.length)
         return false
       }
     }
@@ -350,4 +375,15 @@ object Channel {
     false
   }
 
+  final private def removeWaiters(sem: Semaphore, sel: Array[Selector], numberOfWaiters: Int): Unit = {
+    var j = 0
+    while (j < numberOfWaiters) {
+      if (sel(j).isSender) {
+        sel(j).channel.delWriterWaiter(sem)
+      } else {
+        sel(j).channel.delReaderWaiter(sem)
+      }
+      j += 1
+    }
+  }
 }

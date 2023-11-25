@@ -19,15 +19,18 @@ import com.github.yruslan.channel.impl.Selector
 import scala.concurrent.duration.Duration
 
 class ChannelDecoratorMap[T, U](inputChannel: ReadChannel[T], f: T => U) extends ChannelDecorator[T](inputChannel) with ReadChannel[U] {
+  @throws[InterruptedException]
   override def recv(): U = f(inputChannel.recv())
 
   override def tryRecv(): Option[U] = inputChannel.tryRecv().map(f)
 
+  @throws[InterruptedException]
   override def tryRecv(timeout: Duration): Option[U] = inputChannel.tryRecv(timeout).map(f)
 
   override def recver(action: U => Unit): Selector = inputChannel.recver(t => action(f(t)))
 
   override def fornew[K](action: U => K): Unit = inputChannel.fornew(t => action(f(t)))
 
+  @throws[InterruptedException]
   override def foreach[K](action: U => K): Unit = inputChannel.foreach(t => action(f(t)))
 }

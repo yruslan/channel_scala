@@ -22,6 +22,7 @@ import java.time.Instant.now
 import scala.concurrent.duration.{Duration, MILLISECONDS}
 
 class ChannelDecoratorFilter[T](inputChannel: ReadChannel[T], pred: T => Boolean) extends ChannelDecorator[T](inputChannel) with ReadChannel[T] {
+  @throws[InterruptedException]
   override def recv(): T = {
     var v = inputChannel.recv()
     var found = pred(v)
@@ -44,6 +45,7 @@ class ChannelDecoratorFilter[T](inputChannel: ReadChannel[T], pred: T => Boolean
     valueOpt
   }
 
+  @throws[InterruptedException]
   override def tryRecv(timeout: Duration): Option[T] = {
     if (timeout == Duration.Zero) {
       return tryRecv()
@@ -72,5 +74,6 @@ class ChannelDecoratorFilter[T](inputChannel: ReadChannel[T], pred: T => Boolean
 
   override def fornew[U](action: T => U): Unit = inputChannel.fornew(t => if (pred(t)) action(t))
 
+  @throws[InterruptedException]
   override def foreach[U](action: T => U): Unit = inputChannel.foreach(t => if (pred(t)) action(t))
 }

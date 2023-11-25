@@ -40,6 +40,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def send(value: T): Unit = {
     lock.lock()
     try {
@@ -49,7 +50,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
 
       writers += 1
       while (q.size == maxCapacity && !closed) {
-        cwr.await()
+        awaitWriters()
       }
 
       if (!closed) {
@@ -82,6 +83,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def trySend(value: T, timeout: Duration): Boolean = {
     if (timeout == Duration.Zero) {
       return trySend(value)
@@ -95,7 +97,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
 
       var isTimeoutExpired = false
       while (!closed && !hasCapacity && !isTimeoutExpired) {
-        isTimeoutExpired = !awaiter.await(cwr)
+        isTimeoutExpired = !awaitWriters(awaiter)
       }
 
       val isSucceeded = if (!closed && hasCapacity) {
@@ -112,12 +114,13 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def recv(): T = {
     lock.lock()
     try {
       readers += 1
       while (!closed && q.isEmpty) {
-        crd.await()
+        awaitReaders()
       }
 
       if (closed && q.isEmpty) {
@@ -153,6 +156,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
+  @throws[InterruptedException]
   final override def tryRecv(timeout: Duration): Option[T] = {
     if (timeout == Duration.Zero) {
       return tryRecv()
@@ -165,7 +169,7 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
       readers += 1
       var isTimeoutExpired = false
       while (!closed && !hasMessages && !isTimeoutExpired) {
-        isTimeoutExpired = !awaiter.await(crd)
+        isTimeoutExpired = !awaitReaders(awaiter)
       }
       readers -= 1
 
