@@ -21,13 +21,18 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 
 trait ReadChannel[+T] extends ChannelLike {
+  @throws[InterruptedException]
   def recv(): T
   def tryRecv(): Option[T]
+
+  @throws[InterruptedException]
   def tryRecv(timeout: Duration): Option[T]
 
   def recver(action: T => Unit): Selector
 
   def fornew[U](f: T => U): Unit
+
+  @throws[InterruptedException]
   def foreach[U](f: T => U): Unit
 
   def map[U](f: T => U): ReadChannel[U] = new ChannelDecoratorMap[T, U](this, f)

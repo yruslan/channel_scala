@@ -25,6 +25,7 @@ class Awaiter(timeout: Duration) {
   private val startInstant = Instant.now()
   private val timeoutMilli = if (timeout.isFinite) timeout.toMillis else 0L
 
+  @throws[InterruptedException]
   def await(cond: Condition): Boolean = {
     if (timeout == Duration.Zero) {
       false
