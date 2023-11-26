@@ -197,7 +197,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     try {
       cwr.await()
     } catch {
-      case ex: InterruptedException =>
+      case ex: Throwable =>
         writers -= 1
         cwr.signal()
         throw ex
@@ -210,7 +210,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     try {
       awaiter.await(cwr)
     } catch {
-      case ex: InterruptedException =>
+      case ex: Throwable =>
         writers -= 1
         cwr.signal()
         throw ex
@@ -223,7 +223,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     try {
       crd.await()
     } catch {
-      case ex: InterruptedException =>
+      case ex: Throwable =>
         readers -= 1
         crd.signal()
         throw ex
@@ -236,7 +236,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     try {
       awaiter.await(crd)
     } catch {
-      case ex: InterruptedException =>
+      case ex: Throwable =>
         readers -= 1
         crd.signal()
         throw ex
@@ -369,7 +369,7 @@ object Channel {
           true
         }
       } catch {
-        case ex: InterruptedException =>
+        case ex: Throwable =>
           removeWaiters(sem, sel, sel.length)
           throw ex
       }
