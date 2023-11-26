@@ -780,38 +780,41 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     }
 
     "ping pong messages between 2 workers" in {
-      val actions = new StringBuffer()
+      for (_ <- Range(0, 100)) {
+        val actions = new StringBuffer()
 
-      /* Full qualified name 'com.github.yruslan.channel.Channel' is used here to make IntelliJ IDEA happy. */
-      def worker(workerNum: Int, ch: com.github.yruslan.channel.Channel[Int]): Unit = {
-        for (i <- Range(0, 10)) {
-          val k = select(
-            ch.recver(n => {
-              actions.append(s"R$workerNum$i-")
-            }),
-            ch.sender(i) {
-              actions.append(s"S$workerNum$i-")
-            }
-          )
-          if (!k) throw new IllegalArgumentException("Failing the worker")
+        /* Full qualified name 'com.github.yruslan.channel.Channel' is used here to make IntelliJ IDEA happy. */
+        def worker(workerNum: Int, ch1: com.github.yruslan.channel.Channel[Int], ch2: com.github.yruslan.channel.Channel[Int]): Unit = {
+          for (i <- Range(0, 10)) {
+            val k = select(
+              ch1.recver(n => {
+                actions.append(s"R$workerNum$n-")
+              }),
+              ch2.sender(i) {
+                actions.append(s"S$workerNum$i-")
+              }
+            )
+            if (!k) throw new IllegalArgumentException("Failing the worker")
+          }
         }
+
+        val channel1 = Channel.make[Int]
+        val channel2 = Channel.make[Int]
+
+        val fut1 = Future {
+          worker(1, channel1, channel2)
+        }
+
+        val fut2 = Future {
+          worker(2, channel2, channel1)
+        }
+
+        Await.result(fut1, Duration.apply(4, SECONDS))
+        Await.result(fut2, Duration.apply(4, SECONDS))
+
+        // 10 messages sent and received, by 2 workers
+        assert(actions.toString.length == 80)
       }
-
-      val channel = Channel.make[Int]
-
-      val fut1 = Future {
-        worker(1, channel)
-      }
-
-      val fut2 = Future {
-        worker(2, channel)
-      }
-
-      Await.result(fut1, Duration.apply(4, SECONDS))
-      Await.result(fut2, Duration.apply(4, SECONDS))
-
-      // 10 messages sent and received, by 2 workers
-      assert(actions.toString.length == 80)
     }
 
     "work with two channels" in {
