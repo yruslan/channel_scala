@@ -77,19 +77,23 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   @throws[InterruptedException]
   final override def foreach[U](f: T => U): Unit = {
     while (true) {
-      lock.lock()
-      readers += 1
-      while (!closed && !hasMessages) {
-        awaitReaders()
-      }
-      readers -= 1
-      if (isClosed) {
-        lock.unlock()
-        return
-      }
+      var valOpt: Option[T] = None
 
-      val valOpt = fetchValueOpt()
-      lock.unlock()
+      lock.lock()
+      try {
+        readers += 1
+        while (!closed && !hasMessages) {
+          awaitReaders()
+        }
+        readers -= 1
+        if (isClosed) {
+          return
+        }
+
+        valOpt = fetchValueOpt()
+      } finally {
+        lock.unlock()
+      }
 
       valOpt.foreach(f)
     }
@@ -187,6 +191,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
 
   protected def hasMessages: Boolean
 
+  /* This method assumes the lock is being held. */
   @throws[InterruptedException]
   final protected def awaitWriters(): Unit = {
     try {
@@ -199,6 +204,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   @throws[InterruptedException]
   final protected def awaitWriters(awaiter: Awaiter): Boolean = {
     try {
@@ -211,6 +217,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   @throws[InterruptedException]
   final protected def awaitReaders(): Unit = {
     try {
@@ -223,6 +230,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   @throws[InterruptedException]
   final protected def awaitReaders(awaiter: Awaiter): Boolean = {
     try {
