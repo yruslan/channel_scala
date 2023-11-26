@@ -101,7 +101,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
 
   protected def fetchValueOpt(): Option[T]
 
-  final override def sender(value: T) (action: => Unit = {}): Selector = {
+  final override def sender(value: T)(action: => Unit = {}): Selector = {
     new Selector(true, this) {
       override def sendRecv(): Boolean = trySend(value)
 
@@ -250,23 +250,23 @@ object Channel {
   val CLOSED = 2
 
   /**
-   * Create a synchronous channel.
-   *
-   * @tparam T The type of the channel.
-   * @return A new channel
-   */
+    * Create a synchronous channel.
+    *
+    * @tparam T The type of the channel.
+    * @return A new channel
+    */
   def make[T]: Channel[T] = {
     new SyncChannel[T]
   }
 
   /**
-   * Create a channel. By default a synchronous channel will be created.
-   * If bufferSize is greater then zero, a buffered channel will be created.
-   *
-   * @param bufferSize Asynchronous buffer size.
-   * @tparam T The type of the channel.
-   * @return A new channel
-   */
+    * Create a channel. By default a synchronous channel will be created.
+    * If bufferSize is greater then zero, a buffered channel will be created.
+    *
+    * @param bufferSize Asynchronous buffer size.
+    * @tparam T The type of the channel.
+    * @return A new channel
+    */
   def make[T](bufferSize: Int): Channel[T] = {
     require(bufferSize >= 0)
 
@@ -288,41 +288,86 @@ object Channel {
   }
 
   /**
-   * Waits for a non-blocking operation to be available on the list of channels.
-   *
-   * @param selector  A first channel to wait for (mandatory).
-   * @param selectors Other channels to wait for.
-   * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed.
-   */
+    * Waits for a non-blocking operation to be available on the list of channels.
+    * If more than one channel is ready to perform its operation, the channel to perform the operation on will be chosen
+    * at random.
+    *
+    * @param selector  A first channel to wait for (mandatory).
+    * @param selectors Other channels to wait for.
+    * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed.
+    */
   def select(selector: Selector, selectors: Selector*): Boolean = {
-    trySelect(Duration.Inf, selector, selectors: _*)
+    trySelect(Duration.Inf, false, selector, selectors: _*)
   }
 
   /**
-   * Non-blocking check for a possibility of a non-blocking operation on several channels.
-   *
-   * @param selector  A first channel to wait for (mandatory).
-   * @param selectors Other channels to wait for.
-   * @return true if one of pending operations wasn't blocking.
-   */
+    * Waits for a non-blocking operation to be available on the list of channels.
+    * If more than one channel is ready to perform its operation, the first one in the list takes precedence.
+    *
+    * @param selector  A first channel to wait for (mandatory).
+    * @param selectors Other channels to wait for.
+    * @return true is none of the channels are closed and select() can be invoked again, false if at least one of channels is closed.
+    */
+  def prioritySelect(selector: Selector, selectors: Selector*): Boolean = {
+    trySelect(Duration.Inf, true, selector, selectors: _*)
+  }
+
+  /**
+    * Non-blocking check for a possibility of a non-blocking operation on several channels.
+    * If more than one channel is ready to perform its operation, the channel to perform the operation on will be chosen
+    * at random.
+    *
+    * @param selector  A first channel to wait for (mandatory).
+    * @param selectors Other channels to wait for.
+    * @return true if one of pending operations wasn't blocking.
+    */
   def trySelect(selector: Selector, selectors: Selector*): Boolean = {
-    trySelect(Duration.Zero, selector, selectors: _*)
+    trySelect(Duration.Zero, false, selector, selectors: _*)
   }
 
   /**
-   * Waits for a non-bloaking action to be available.
-   *
-   * @param timout    A timeout to wait for a non-blocking action to be available.
-   * @param selector  A first channel to wait for (mandatory).
-   * @param selectors Other channels to wait for.
-   * @return true if one of pending operations wasn't blockingю
-   */
-  @throws[InterruptedException]
+    * Non-blocking check for a possibility of a non-blocking operation on several channels.
+    *
+    * @param selector  A first channel to wait for (mandatory).
+    * @param selectors Other channels to wait for.
+    * @return true if one of pending operations wasn't blocking.
+    */
   def trySelect(timout: Duration, selector: Selector, selectors: Selector*): Boolean = {
+    trySelect(timout, false, selector, selectors: _*)
+  }
+
+  /**
+    * Non-blocking check for a possibility of a non-blocking operation on several channels.
+    * If more than one channel is ready to perform its operation, the first one in the list takes precedence.
+    *
+    * @param selector  A first channel to wait for (mandatory).
+    * @param selectors Other channels to wait for.
+    * @return true if one of pending operations wasn't blocking.
+    */
+  def tryPrioritySelect(selector: Selector, selectors: Selector*): Boolean = {
+    trySelect(Duration.Zero, true, selector, selectors: _*)
+  }
+
+  /**
+    * Waits for a non-bloaking action to be available.
+    *
+    * @param timout            A timeout to wait for a non-blocking action to be available.
+    * @param isPriorityOrdered If true, when more then one selectors is ready, the first one in the list will be selected.
+    * @param selector          A first channel to wait for (mandatory).
+    * @param selectors         Other channels to wait for.
+    * @return true if one of pending operations wasn't blockingю
+    */
+  @throws[InterruptedException]
+  def trySelect(timout: Duration, isPriorityOrdered: Boolean, selector: Selector, selectors: Selector*): Boolean = {
     val sem = new Semaphore(0)
 
-    // If several channels have pending messages, select randomly the channel to return
-    val sel = scala.util.Random.shuffle(selector :: selectors.toList).toArray
+    val sel = if (isPriorityOrdered) {
+      // If channels are ordered by priority, retain the original order
+      (selector :: selectors.toList).toArray
+    } else {
+      // If several channels have pending messages, select randomly the channel to return
+      scala.util.Random.shuffle(selector :: selectors.toList).toArray
+    }
 
     // Add waiters
     var i = 0
