@@ -17,9 +17,8 @@ package com.github.yruslan.channel
 
 import java.time.Instant
 import java.util.concurrent.{Executors, TimeUnit}
-
 import org.scalatest.wordspec.AnyWordSpec
-import com.github.yruslan.channel.Channel.select
+import com.github.yruslan.channel.Channel.{select, trySelect}
 
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent._
@@ -118,11 +117,55 @@ class GuaranteesSuite extends AnyWordSpec {
     }
   }
 
+  "Priority is honored for priority selects" when {
+    "several sync input sync output channels are active, a channel is selected according to priority" in {
+      val in1 = Channel.make[Int]
+      val in2 = Channel.make[Int]
+
+      val out1 = Channel.make[Int]
+      val out2 = Channel.make[Int]
+
+      testFairness(in1, in2, out1, out2, isPriority = true)
+    }
+
+    "several sync input async output channels are active, a channel is selected according to priority" in {
+      val in1 = Channel.make[Int]
+      val in2 = Channel.make[Int]
+
+      val out1 = Channel.make[Int](1)
+      val out2 = Channel.make[Int](1)
+
+      testFairness(in1, in2, out1, out2, isPriority = true)
+    }
+
+    "several async input sync output channels are active, a channel is selected according to priority" in {
+      val in1 = Channel.make[Int](1)
+      val in2 = Channel.make[Int](1)
+
+      val out1 = Channel.make[Int]
+      val out2 = Channel.make[Int]
+
+      testFairness(in1, in2, out1, out2, isPriority = true)
+    }
+
+    "several async input async output channels are active, a channel is selected according to priority" in {
+      val in1 = Channel.make[Int](1)
+      val in2 = Channel.make[Int](1)
+
+      val out1 = Channel.make[Int](1)
+      val out2 = Channel.make[Int](1)
+
+      testFairness(in1, in2, out1, out2, isPriority = true)
+    }
+  }
+
+
   /* Full qualified name 'com.github.yruslan.channel.Channel' is used here to make IntelliJ IDEA happy. */
   private def testFairness(in1: com.github.yruslan.channel.Channel[Int],
                            in2: com.github.yruslan.channel.Channel[Int],
                            out1: com.github.yruslan.channel.Channel[Int],
-                           out2: com.github.yruslan.channel.Channel[Int]): Unit = {
+                           out2: com.github.yruslan.channel.Channel[Int],
+                           isPriority: Boolean = false): Unit = {
     val results = new ListBuffer[(Int, Int)]
 
     def balancer(input1: ReadChannel[Int],
@@ -134,14 +177,18 @@ class GuaranteesSuite extends AnyWordSpec {
       var exit = false
 
       while (!exit) {
-        select(
+        trySelect(
+          Duration.Inf,
+          isPriority,
           input1.recver(x => v = x),
           input2.recver(x => v = x),
           finishChannel.recver(_ => exit = true)
         )
 
         if (!exit) {
-          select(
+          trySelect(
+            Duration.Inf,
+            isPriority,
             output1.sender(v) {},
             output2.sender(v) {}
           )
@@ -196,10 +243,17 @@ class GuaranteesSuite extends AnyWordSpec {
     assert(results.size == 100)
     assert(results.map(_._2).sum == 10100) // sum(1..100)*2 = 101*50*2 = 5050*2 = 10100
 
-    // Fairness
     val processedBy = Range(0, 4).map(w => results.count(_._1 == w))
-    assert(processedBy.min > 15)
-    assert(processedBy.max < 35)
+
+    if (isPriority) {
+      // Priority
+      assert(processedBy.min < 5)
+      assert(processedBy.max > 45)
+    } else {
+      // Fairness
+      assert(processedBy.min > 15)
+      assert(processedBy.max < 35)
+    }
   }
 
 }
