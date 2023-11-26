@@ -15,13 +15,13 @@
 
 package com.github.yruslan.channel
 
-import java.time.Instant
-import java.util.concurrent.{Executors, TimeUnit}
-
 import com.github.yruslan.channel.Channel.select
+import com.github.yruslan.channel.mocks.AsyncChannelSpy
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.wordspec.AnyWordSpec
 
+import java.time.Instant
+import java.util.concurrent.{Executors, TimeUnit}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent._
 import scala.concurrent.duration.{Duration, SECONDS}
@@ -32,7 +32,7 @@ import com.github.yruslan.channel.Channel
 class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
   implicit private var ec: ExecutionContextExecutor = _
 
-  private val ex = Executors.newFixedThreadPool(12)
+  private val ex = Executors.newFixedThreadPool(16)
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -111,7 +111,7 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
 
     "closing a synchronous channel should block until the pending message is not received" in {
       val start = Instant.now()
-      val ch = Channel.make[Int]
+      val ch = Channel.make[Int](0)
       var v: Option[Int] = None
 
       Future {
@@ -217,6 +217,90 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
 
       assert(v1 == 0)
       assert(v2 == 9999)
+    }
+
+    "send/foreach should handle interrupted thread" in {
+      val ch = new AsyncChannelSpy[Int](1)
+
+      val output = new ListBuffer[Int]
+
+      val t1 = createThread {
+        ch.foreach(a =>
+          ch.synchronized {
+            output += a
+          }
+        )
+      }
+
+      val t2 = createThread {
+        ch.foreach(a =>
+          ch.synchronized {
+            output += a
+          }
+        )
+      }
+
+      t1.start()
+      t2.start()
+
+      ch.send(100)
+      ch.send(200)
+      ch.send(300)
+
+      t1.interrupt()
+
+      ch.send(400)
+      ch.send(500)
+      ch.send(600)
+      ch.send(700)
+      ch.close()
+
+      t2.join(2000)
+      t1.join(2000)
+
+      assert(output.sorted.toList == List(100, 200, 300, 400, 500, 600, 700))
+      assert(ch.numOfReaders == 0)
+      assert(ch.numOfWriters == 0)
+    }
+
+    "send/recv should handle interrupted thread" in {
+      val ch = new AsyncChannelSpy[Int](1)
+
+      val output = new ListBuffer[Int]
+
+      val t1 = createThread {
+        ch.send(100)
+        ch.send(200)
+        ch.send(300)
+      }
+
+      val t2 = createThread {
+        ch.send(400)
+        Thread.sleep(30)
+        ch.send(500)
+        ch.send(600)
+        ch.send(700)
+        ch.close()
+      }
+
+      t1.start()
+      t2.start()
+
+      output += ch.recv()
+
+      t1.interrupt()
+
+      ch.foreach(v => output += v)
+
+      t2.join(2000)
+      t1.join(2000)
+
+      assert(output.contains(400))
+      assert(output.contains(500))
+      assert(output.contains(600))
+      assert(output.contains(700))
+      assert(ch.numOfReaders == 0)
+      assert(ch.numOfWriters == 0)
     }
   }
 
@@ -709,7 +793,7 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
               actions.append(s"S$workerNum$i-")
             }
           )
-          if (!k) throw new IllegalArgumentException("sss")
+          if (!k) throw new IllegalArgumentException("Failing the worker")
         }
       }
 
@@ -1080,4 +1164,11 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     }
   }
 
+  private def createThread(action: => Unit) = {
+    // Creating thread in the Scala 2.11 compatible way.
+    // Please do not remove 'new Runnable'
+    new Thread(new Runnable {
+      def run(): Unit = action
+    })
+  }
 }
