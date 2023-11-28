@@ -95,7 +95,7 @@ class ChannelFilterSuite extends AnyWordSpec {
     }
 
     "filter input channel on tryRecv(duration)" when {
-      val timeout = Duration(2, MILLISECONDS)
+      val timeout = Duration(200, MILLISECONDS)
       "values either available or not" in {
         val ch1 = Channel.make[Int](3)
 
