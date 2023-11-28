@@ -53,21 +53,18 @@ class ChannelDecoratorFilter[T](inputChannel: ReadChannel[T], pred: T => Boolean
 
     val timeoutMilli = if (timeout.isFinite) timeout.toMillis else 0L
     val startInstant = Instant.now()
-    var valueOpt = inputChannel.tryRecv(timeout)
-    var found = valueOpt.isEmpty || valueOpt.forall(v => pred(v))
-    var elapsedTime = java.time.Duration.between(startInstant, now).toMillis
+    var elapsedTime = 0L
 
-    if (found || elapsedTime >= timeoutMilli) {
-      valueOpt
-    } else {
-      while (!found && elapsedTime < timeoutMilli) {
-        val newTimeout = Duration(timeoutMilli - elapsedTime, MILLISECONDS)
-        valueOpt = inputChannel.tryRecv(newTimeout)
-        found = valueOpt.isEmpty || valueOpt.forall(v => pred(v))
-        elapsedTime = java.time.Duration.between(startInstant, now).toMillis
+    while (elapsedTime < timeoutMilli) {
+      val newTimeout = Duration(timeoutMilli - elapsedTime, MILLISECONDS)
+      val valueOpt = inputChannel.tryRecv(newTimeout)
+      val found = valueOpt.isEmpty || valueOpt.forall(v => pred(v))
+      elapsedTime = java.time.Duration.between(startInstant, now).toMillis
+      if (found) {
+        return valueOpt
       }
-      valueOpt
     }
+    None
   }
 
   override def recver(action: T => Unit): Selector = inputChannel.recver(t => if (pred(t)) action(t))
