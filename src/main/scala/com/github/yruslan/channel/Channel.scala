@@ -17,7 +17,7 @@ package com.github.yruslan.channel
 
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
-import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList}
+import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList, Waiter}
 
 import scala.concurrent.duration.Duration
 
@@ -26,8 +26,8 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected var writers: Int = 0
   protected var closed = false
 
-  protected val readWaiters = new SimpleLinkedList[Semaphore]
-  protected val writeWaiters = new SimpleLinkedList[Semaphore]
+  protected val readWaiters = new SimpleLinkedList[Waiter]
+  protected val writeWaiters = new SimpleLinkedList[Waiter]
 
   // Scala & Java monitors are designed so each object can act as a mutex and a condition variable.
   // But this makes impossible to use a single lock for more than one condition.
@@ -37,13 +37,16 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected val crd: Condition = lock.newCondition()
   protected val cwr: Condition = lock.newCondition()
 
-  final override private[channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = {
+  final override private[channel] def ifEmptyAddReaderWaiter(waiter: Waiter): Boolean = {
     lock.lock()
     try {
-      if (closed || hasMessages) {
+      if (closed) {
+        false
+      } else if (hasMessages) {
+        readWaiters.append(waiter)
         false
       } else {
-        readWaiters.append(sem)
+        readWaiters.append(waiter)
         true
       }
     } finally {
@@ -51,13 +54,16 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  final override private[channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = {
+  final override private[channel] def ifFullAddWriterWaiter(waiter: Waiter): Boolean = {
     lock.lock()
     try {
-      if (closed || hasCapacity) {
+      if (closed) {
+        false
+      } else if (hasCapacity) {
+        writeWaiters.append(waiter)
         false
       } else {
-        writeWaiters.append(sem)
+        writeWaiters.append(waiter)
         true
       }
     } finally {
@@ -123,45 +129,19 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  final override private[channel] def hasMessagesStatus: Int = {
-    lock.lock()
-    val status = if (hasMessages) {
-      Channel.AVAILABLE
-    } else if (closed) {
-      Channel.CLOSED
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
-  }
-
-  final override private[channel] def hasFreeCapacityStatus: Int = {
-    lock.lock()
-    val status = if (hasCapacity) {
-      Channel.AVAILABLE
-    } else if (closed) {
-      Channel.CLOSED
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
-  }
-
-  final override private[channel] def delReaderWaiter(sem: Semaphore): Unit = {
+  final override private[channel] def delReaderWaiter(waiter: Waiter): Unit = {
     lock.lock()
     try {
-      readWaiters.remove(sem)
+      readWaiters.remove(waiter)
     } finally {
       lock.unlock()
     }
   }
 
-  final override private[channel] def delWriterWaiter(sem: Semaphore): Unit = {
+  final override private[channel] def delWriterWaiter(waiter: Waiter): Unit = {
     lock.lock()
     try {
-      writeWaiters.remove(sem)
+      writeWaiters.remove(waiter)
     } finally {
       lock.unlock()
     }
@@ -172,7 +152,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
       crd.signal()
     } else {
       if (!readWaiters.isEmpty) {
-        readWaiters.returnHeadAndRotate().release()
+        readWaiters.returnHeadAndRotate().sem.release()
       }
     }
   }
@@ -182,7 +162,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
       cwr.signal()
     } else {
       if (!writeWaiters.isEmpty) {
-        writeWaiters.returnHeadAndRotate().release()
+        writeWaiters.returnHeadAndRotate().sem.release()
       }
     }
   }
@@ -359,7 +339,7 @@ object Channel {
     */
   @throws[InterruptedException]
   def trySelect(timout: Duration, isPriorityOrdered: Boolean, selector: Selector, selectors: Selector*): Boolean = {
-    val sem = new Semaphore(0)
+    val waiter = new Waiter(new Semaphore(0), Thread.currentThread().getId)
 
     val sel = if (isPriorityOrdered) {
       // If channels are ordered by priority, retain the original order
@@ -374,12 +354,12 @@ object Channel {
     while (i < sel.length) {
       val s = sel(i)
       val blocking = if (s.isSender) {
-        s.channel.ifFullAddWriterWaiter(sem)
+        s.channel.ifFullAddWriterWaiter(waiter)
       } else {
-        s.channel.ifEmptyAddReaderWaiter(sem)
+        s.channel.ifEmptyAddReaderWaiter(waiter)
       }
       if (!blocking && s.sendRecv()) {
-        removeWaiters(sem, sel, i + 1)
+        removeWaiters(waiter, sel, i + 1)
         s.afterAction()
         return true
       }
@@ -390,6 +370,7 @@ object Channel {
       // Re-checking all channels
       i = 0
       while (i < sel.length) {
+        //println(s"${Thread.currentThread().getId} Checking...")
         val s = sel(i)
         val status = if (s.isSender)
           s.channel.hasFreeCapacityStatus
@@ -397,10 +378,11 @@ object Channel {
           s.channel.hasMessagesStatus
 
         if (status == AVAILABLE && s.sendRecv()) {
-          removeWaiters(sem, sel, sel.length)
+          removeWaiters(waiter, sel, sel.length)
           s.afterAction()
           return true
         } else if (status == CLOSED) {
+          //println(s"${Thread.currentThread().getId} Got closed...")
           return false
         }
         i += 1
@@ -408,19 +390,21 @@ object Channel {
 
       val success = try {
         if (timout.isFinite) {
-          sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
+          waiter.sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
         } else {
-          sem.acquire()
+          //println(s"${Thread.currentThread().getId} Waiting...")
+          waiter.sem.acquire()
+          //println(s"${Thread.currentThread().getId} Awake...")
           true
         }
       } catch {
         case ex: Throwable =>
-          removeWaiters(sem, sel, sel.length)
+          removeWaiters(waiter, sel, sel.length)
           throw ex
       }
 
       if (!success) {
-        removeWaiters(sem, sel, sel.length)
+        removeWaiters(waiter, sel, sel.length)
         return false
       }
     }
@@ -428,13 +412,13 @@ object Channel {
     false
   }
 
-  final private def removeWaiters(sem: Semaphore, sel: Array[Selector], numberOfWaiters: Int): Unit = {
+  final private def removeWaiters(waiter: Waiter, sel: Array[Selector], numberOfWaiters: Int): Unit = {
     var j = 0
     while (j < numberOfWaiters) {
       if (sel(j).isSender) {
-        sel(j).channel.delWriterWaiter(sem)
+        sel(j).channel.delWriterWaiter(waiter)
       } else {
-        sel(j).channel.delReaderWaiter(sem)
+        sel(j).channel.delReaderWaiter(waiter)
       }
       j += 1
     }

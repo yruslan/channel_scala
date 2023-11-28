@@ -91,6 +91,28 @@ class SimpleLinkedList[T] {
     }
   }
 
+  def containsNot(a: T): Boolean = this.synchronized {
+    var p = first
+    while (p != null) {
+      if (p.el != a) {
+        return true
+      }
+      p = p.next
+    }
+    false
+  }
+
+  def findNot(a: T): Option[T] = this.synchronized {
+    var p = first
+    while (p != null) {
+      if (p.el != a) {
+        return Option(p.el)
+      }
+      p = p.next
+    }
+    None
+  }
+
   def clear(): Unit = this.synchronized {
     first = null
     last = null

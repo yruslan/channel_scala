@@ -30,8 +30,8 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     try {
       if (!closed) {
         closed = true
-        readWaiters.foreach(w => w.release())
-        writeWaiters.foreach(w => w.release())
+        readWaiters.foreach(w => w.sem.release())
+        writeWaiters.foreach(w => w.sem.release())
         crd.signalAll()
         cwr.signalAll()
       }
@@ -202,4 +202,29 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
+  final override private[channel] def hasFreeCapacityStatus: Int = {
+    lock.lock()
+    val status = if (closed) {
+      Channel.CLOSED
+    } else if (hasCapacity) {
+      Channel.AVAILABLE
+    } else {
+      Channel.NOT_AVAILABLE
+    }
+    lock.unlock()
+    status
+  }
+
+  final override private[channel] def hasMessagesStatus: Int = {
+    lock.lock()
+    val status = if (hasMessages) {
+      Channel.AVAILABLE
+    } else if (closed) {
+      Channel.CLOSED
+    } else {
+      Channel.NOT_AVAILABLE
+    }
+    lock.unlock()
+    status
+  }
 }
