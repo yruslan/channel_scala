@@ -55,7 +55,7 @@ class ChannelDecoratorFilter[T](inputChannel: ReadChannel[T], pred: T => Boolean
     val startInstant = Instant.now()
     var elapsedTime = 0L
 
-    while (elapsedTime < timeoutMilli) {
+    while (elapsedTime <= timeoutMilli) {
       val newTimeout = Duration(timeoutMilli - elapsedTime, MILLISECONDS)
       val valueOpt = inputChannel.tryRecv(newTimeout)
       val found = valueOpt.isEmpty || valueOpt.forall(v => pred(v))

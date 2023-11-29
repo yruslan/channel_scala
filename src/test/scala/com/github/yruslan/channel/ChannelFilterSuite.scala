@@ -17,6 +17,7 @@ package com.github.yruslan.channel
 
 import org.scalatest.wordspec.AnyWordSpec
 
+import java.time.Instant
 import java.util.concurrent.Executors
 import scala.concurrent._
 import scala.concurrent.duration.{Duration, MILLISECONDS}
@@ -141,6 +142,62 @@ class ChannelFilterSuite extends AnyWordSpec {
         ch1.close()
 
         assert(v1.contains(3))
+      }
+      "filter the correct value even with 0 millisecond timeout" in {
+        val ch1 = Channel.make[Int](2)
+
+        val ch2 = ch1.filter(v => v == 2)
+
+        ch1.send(1)
+        ch1.send(2)
+
+        val v1 = ch2.tryRecv(Duration.Zero)
+        ch1.close()
+
+        assert(v1.contains(2))
+      }
+
+      "return None if no values match and zero timeout" in {
+        val ch1 = Channel.make[Int](2)
+
+        val ch2 = ch1.filter(v => v == 3)
+
+        ch1.send(1)
+        ch1.send(2)
+
+        val v1 = ch2.tryRecv(Duration.Zero)
+        ch1.close()
+
+        assert(v1.isEmpty)
+      }
+
+      "return instantly on empty channel and zero timeout" in {
+        val ch1 = Channel.make[Int](2)
+
+        val ch2 = ch1.filter(v => v == 3)
+
+        val start = Instant.now()
+        val v1 = ch2.tryRecv(Duration.Zero)
+        val finish = Instant.now()
+
+        assert(v1.isEmpty)
+        assert(java.time.Duration.between(start, finish).toMillis <= 10L)
+      }
+
+      "return None after proper wait for a non-zero timeout" in {
+        val ch1 = Channel.make[Int](2)
+
+        val ch2 = ch1.filter(v => v == 3)
+
+        ch1.send(1)
+        ch1.send(2)
+
+        val start = Instant.now()
+        val v1 = ch2.tryRecv(Duration(10, MILLISECONDS))
+        val finish = Instant.now()
+
+        assert(v1.isEmpty)
+        assert(java.time.Duration.between(start, finish).toMillis >= 10L)
       }
     }
 
