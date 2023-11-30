@@ -33,7 +33,7 @@ ThisBuild / developers := List(
 ThisBuild / homepage := Some(url("https://github.com/yruslan/channel_scala"))
 ThisBuild / description := "A port of GoLang channels to Scala"
 ThisBuild / startYear := Some(2020)
-ThisBuild / licenses += "MIT" -> url("http://opensource.org/licenses/MIT")
+ThisBuild / licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.txt")
 
 ThisBuild / pomIncludeRepository := { _ => false }
 ThisBuild / publishTo := {
