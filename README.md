@@ -487,6 +487,11 @@ val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Changelog
+- #### 0.1.5 released Nov 26, 2023.
+    - Add handling of `InterruptedException` that can occur while waiting on a channel.
+    - Add support for priority `prioritySelect()` for channels. When several selectors are ready the first one will take precedence.
+    - Fix race condition in `foreach()` when an exception is thrown inside the action.
+
 - #### 0.1.4 released Sep 8, 2022.
     - Add covariance for read-only channels.
       - E.g. `val ch1: ReadChannel[Animal] = ch2: ReadChannel[Dog]`.
