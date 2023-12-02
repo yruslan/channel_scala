@@ -94,21 +94,19 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     lock.lock()
     try {
       writers += 1
-
       var isTimeoutExpired = false
       while (!closed && !hasCapacity && !isTimeoutExpired) {
         isTimeoutExpired = !awaitWriters(awaiter)
       }
+      writers -= 1
 
-      val isSucceeded = if (!closed && hasCapacity) {
+      if (!closed && hasCapacity) {
         q.enqueue(value)
         notifyReaders()
         true
       } else {
         false
       }
-      writers -= 1
-      isSucceeded
     } finally {
       lock.unlock()
     }
