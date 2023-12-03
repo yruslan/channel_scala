@@ -873,6 +873,84 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     }
   }
 
+  "select() for synchronous channels" should {
+    "select should not send if there is no receiver" in {
+      val channel = Channel.make[Int]
+
+      val t1 = createThread{
+        Channel.select(
+          channel.sender(1) {}
+        )
+
+        channel.recv()
+        fail("Should not execute here")
+      }
+
+      t1.start()
+      t1.join(200)
+      assert(t1.isAlive)
+      t1.interrupt()
+    }
+
+    "select should not send to the same thread" in {
+      val channel = Channel.make[Int]
+
+      val t1 = createThread {
+        var output = 0
+        Channel.select(
+          channel.sender(1) {},
+          channel.recver(v => output = v)
+        )
+
+        fail("Should not execute here")
+      }
+
+      t1.start()
+      t1.join(200)
+      assert(t1.isAlive)
+      t1.interrupt()
+    }
+
+    "ping pong between 2 workers with single channel" in {
+      for (_ <- Range(0, 100)) {
+        val actions = new StringBuffer()
+
+        /* Full qualified name 'com.github.yruslan.channel.Channel' is used here to make IntelliJ IDEA happy. */
+        def worker(workerNum: Int, ch: com.github.yruslan.channel.Channel[Int]): Unit = {
+          for (i <- Range(0, 10)) {
+            val k = select(
+              ch.recver(n => {
+                actions.append(s"R$workerNum$n-")
+              }),
+              ch.sender(i) {
+                actions.append(s"S$workerNum$i-")
+              }
+            )
+            if (!k) throw new IllegalArgumentException("Failing the worker")
+          }
+        }
+
+        val channel = Channel.make[Int]
+
+        val fut1 = Future {
+          worker(1, channel)
+        }
+
+        val fut2 = Future {
+          worker(2, channel)
+        }
+
+        Await.result(fut1, Duration.apply(4, SECONDS))
+        Await.result(fut2, Duration.apply(4, SECONDS))
+
+        //println(actions.toString)
+
+        // 10 messages sent and received, by 2 workers
+        assert(actions.toString.length == 80)
+      }
+    }
+  }
+
   "trySelect()" should {
     "handle finite timeouts" when {
       "timeout is not expired" in {

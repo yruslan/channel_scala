@@ -16,6 +16,7 @@
 package com.github.yruslan.channel
 import com.github.yruslan.channel.impl.Selector
 
+import java.util.concurrent.Semaphore
 import scala.concurrent.duration.Duration
 
 class ChannelDecoratorMap[T, U](inputChannel: ReadChannel[T], f: T => U) extends ChannelDecorator[T](inputChannel) with ReadChannel[U] {

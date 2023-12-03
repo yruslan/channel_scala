@@ -15,7 +15,7 @@
 
 package com.github.yruslan.channel
 
-import java.util.concurrent.Semaphore
+import com.github.yruslan.channel.impl.Waiter
 
 abstract class ChannelDecorator[T](inputChannel: ReadChannel[T]) extends ChannelLike {
   override def isClosed: Boolean = inputChannel.isClosed
@@ -24,11 +24,11 @@ abstract class ChannelDecorator[T](inputChannel: ReadChannel[T]) extends Channel
 
   override private [channel] def hasFreeCapacityStatus: Int = inputChannel.hasFreeCapacityStatus
 
-  override private [channel] def ifEmptyAddReaderWaiter(sem: Semaphore): Boolean = inputChannel.ifEmptyAddReaderWaiter(sem)
+  override private [channel] def ifEmptyAddReaderWaiter(waiter: Waiter): Boolean = inputChannel.ifEmptyAddReaderWaiter(waiter)
 
-  override private [channel] def ifFullAddWriterWaiter(sem: Semaphore): Boolean = inputChannel.ifFullAddWriterWaiter(sem)
+  override private [channel] def ifFullAddWriterWaiter(waiter: Waiter): Boolean = inputChannel.ifFullAddWriterWaiter(waiter)
 
-  override private [channel] def delReaderWaiter(sem: Semaphore): Unit = inputChannel.delReaderWaiter(sem)
+  override private [channel] def delReaderWaiter(waiter: Waiter): Unit = inputChannel.delReaderWaiter(waiter)
 
-  override private [channel] def delWriterWaiter(sem: Semaphore): Unit = inputChannel.delWriterWaiter(sem)
+  override private [channel] def delWriterWaiter(waiter: Waiter): Unit = inputChannel.delWriterWaiter(waiter)
 }

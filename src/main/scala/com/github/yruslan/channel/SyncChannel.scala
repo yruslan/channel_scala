@@ -21,15 +21,17 @@ import scala.concurrent.duration.Duration
 
 class SyncChannel[T] extends Channel[T] {
   protected var syncValue: Option[T] = None
+  protected var sender: Long = -1
 
   @throws[InterruptedException]
   final override def close(): Unit = {
     lock.lock()
     try {
       if (!closed) {
+        //println(s"${Thread.currentThread().getId} Closing...")
         closed = true
-        readWaiters.foreach(w => w.release())
-        writeWaiters.foreach(w => w.release())
+        readWaiters.foreach(w => w.sem.release())
+        writeWaiters.foreach(w => w.sem.release())
         crd.signalAll()
         cwr.signalAll()
 
@@ -53,12 +55,14 @@ class SyncChannel[T] extends Channel[T] {
       }
 
       writers += 1
-      while (syncValue.nonEmpty && !closed) {
+      while (hasMessages && !closed) {
         awaitWriters()
       }
       if (!closed) {
+        //println(s"${Thread.currentThread().getId} Sent: ${value}")
         syncValue = Option(value)
-        notifyReaders()
+        sender = Thread.currentThread().getId
+        notifySyncReaders()
 
         while (syncValue.nonEmpty && !closed) {
           awaitWriters()
@@ -80,8 +84,10 @@ class SyncChannel[T] extends Channel[T] {
         if (!hasCapacity) {
           false
         } else {
+          //println(s"${Thread.currentThread().getId} Sent: ${value}")
           syncValue = Option(value)
-          notifyReaders()
+          sender = Thread.currentThread().getId
+          notifySyncReaders()
           true
         }
       }
@@ -115,7 +121,8 @@ class SyncChannel[T] extends Channel[T] {
           false
         case None =>
           syncValue = Option(value)
-          notifyReaders()
+          sender = Thread.currentThread().getId
+          notifySyncReaders()
           true
       }
       writers -= 1
@@ -143,6 +150,7 @@ class SyncChannel[T] extends Channel[T] {
 
       val v: T = syncValue.get
       syncValue = None
+      sender = -1
       readers -= 1
       notifyWriters()
       v
@@ -159,9 +167,14 @@ class SyncChannel[T] extends Channel[T] {
       } else {
         if (syncValue.isEmpty) {
           None
+        } else if (sender == Thread.currentThread().getId) {
+          notifySyncReaders()
+          None
         } else {
           val v = syncValue
+          //println(s"${Thread.currentThread().getId} Received: ${v}")
           syncValue = None
+          sender = -1
           notifyWriters()
           v
         }
@@ -206,7 +219,18 @@ class SyncChannel[T] extends Channel[T] {
   }
 
   final override protected def hasCapacity: Boolean = {
-    syncValue.isEmpty && (readers > 0 || readWaiters.nonEmpty)
+    if (syncValue.isEmpty && (readers > 0)) {
+      true
+    } else if (syncValue.isDefined) {
+      false
+    } else {
+      val myThreadId = Thread.currentThread().getId
+
+      var foundOtherThread = false
+      readWaiters.foreach(waiter => if (waiter.threadId != myThreadId) foundOtherThread = true)
+
+      foundOtherThread
+    }
   }
 
   final override protected def hasMessages: Boolean = {
@@ -219,7 +243,61 @@ class SyncChannel[T] extends Channel[T] {
     }
     val v = syncValue
     syncValue = None
+    sender = -1
     v
   }
 
+  final override private[channel] def hasFreeCapacityStatus: Int = {
+    lock.lock()
+    val status = if (closed) {
+      Channel.CLOSED
+    } else if (syncValue.isEmpty) {
+      Channel.AVAILABLE
+    } else {
+      Channel.NOT_AVAILABLE
+    }
+    lock.unlock()
+    status
+  }
+
+  final override private[channel] def hasMessagesStatus: Int = {
+    lock.lock()
+    val status = if (hasMessages && closed) {
+      Channel.AVAILABLE
+    } else if (closed) {
+      Channel.CLOSED
+    } else if (hasMessages || writers > 0 || Thread.currentThread().getId != sender) {
+      Channel.AVAILABLE
+    }  else {
+      Channel.NOT_AVAILABLE
+    }
+    lock.unlock()
+    status
+  }
+
+  final private def notifySyncReaders(): Unit = {
+    if (readers > 0) {
+      crd.signal()
+    } else {
+      if (!readWaiters.isEmpty) {
+        val count = readWaiters.size
+        //println(s"${Thread.currentThread().getId} Readers count: ${count}")
+        var waiter = readWaiters.returnHeadAndRotate()
+        var i = 0
+        while (i < count && waiter.threadId == sender) {
+          i += 1
+          if (waiter.threadId == sender) {
+            //println(s"${Thread.currentThread().getId} Skipping waking up ${waiter.threadId}...${count}")
+          }
+          waiter = readWaiters.returnHeadAndRotate()
+
+        }
+
+        if (waiter.threadId != sender) {
+          //println(s"${Thread.currentThread().getId} Waking up ${waiter.threadId}...")
+          waiter.sem.release()
+        }
+      }
+    }
+  }
 }
