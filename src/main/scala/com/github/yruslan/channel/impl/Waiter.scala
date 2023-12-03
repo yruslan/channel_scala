@@ -13,17 +13,11 @@
  * limitations under the License.
  */
 
-package com.github.yruslan.channel
+package com.github.yruslan.channel.impl
 
-import com.github.yruslan.channel.impl.Waiter
+import java.util.concurrent.Semaphore
 
-trait ChannelLike {
-  def isClosed: Boolean
-
-  private [channel] def hasMessagesStatus: Int
-  private [channel] def hasFreeCapacityStatus: Int
-  private [channel] def ifEmptyAddReaderWaiter(waiter: Waiter): Boolean
-  private [channel] def ifFullAddWriterWaiter(waiter: Waiter): Boolean
-  private [channel] def delReaderWaiter(waiter: Waiter): Unit
-  private [channel] def delWriterWaiter(waiter: Waiter): Unit
-}
+class Waiter(
+              val sem: Semaphore,
+              val threadId: Long
+            )
