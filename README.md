@@ -487,6 +487,9 @@ val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Changelog
+- #### 0.1.6 released Dec 3, 2023.
+    - Fix channel filtering does not filter some values at random.
+
 - #### 0.1.5 released Nov 26, 2023.
     - Add handling of `InterruptedException` that can occur while waiting on a channel.
     - Add support for priority `prioritySelect()` for channels. When several selectors are ready the first one will take precedence.
