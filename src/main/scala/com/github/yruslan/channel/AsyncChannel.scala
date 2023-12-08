@@ -185,14 +185,17 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   final override protected def hasCapacity: Boolean = {
     q.size < maxCapacity
   }
 
+  /* This method assumes the lock is being held. */
   final override protected def hasMessages: Boolean = {
     q.nonEmpty
   }
 
+  /* This method assumes the lock is being held. */
   final override protected def fetchValueOpt(): Option[T] = {
     if (q.isEmpty) {
       None
@@ -200,31 +203,5 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
       notifyWriters()
       Option(q.dequeue())
     }
-  }
-
-  final override private[channel] def hasFreeCapacityStatus: Int = {
-    lock.lock()
-    val status = if (closed) {
-      Channel.CLOSED
-    } else if (hasCapacity) {
-      Channel.AVAILABLE
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
-  }
-
-  final override private[channel] def hasMessagesStatus: Int = {
-    lock.lock()
-    val status = if (hasMessages) {
-      Channel.AVAILABLE
-    } else if (closed) {
-      Channel.CLOSED
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
   }
 }

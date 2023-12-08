@@ -129,6 +129,32 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  final override private[channel] def hasMessagesStatus: Int = {
+    lock.lock()
+    val status = if (hasMessages) {
+      Channel.AVAILABLE
+    } else if (closed) {
+      Channel.CLOSED
+    } else {
+      Channel.NOT_AVAILABLE
+    }
+    lock.unlock()
+    status
+  }
+
+  final override private[channel] def hasFreeCapacityStatus: Int = {
+    lock.lock()
+    val status = if (closed) {
+      Channel.CLOSED
+    } else if (hasCapacity) {
+      Channel.AVAILABLE
+    } else {
+      Channel.NOT_AVAILABLE
+    }
+    lock.unlock()
+    status
+  }
+
   final override private[channel] def delReaderWaiter(waiter: Waiter): Unit = {
     lock.lock()
     try {
@@ -147,6 +173,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   final protected def notifyReaders(): Unit = {
     if (readers > 0) {
       crd.signal()
@@ -157,6 +184,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   final protected def notifyWriters(): Unit = {
     if (writers > 0) {
       cwr.signal()
@@ -167,8 +195,10 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   protected def hasCapacity: Boolean
 
+  /* This method assumes the lock is being held. */
   protected def hasMessages: Boolean
 
   /* This method assumes the lock is being held. */

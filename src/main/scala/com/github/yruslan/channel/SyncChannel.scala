@@ -218,6 +218,7 @@ class SyncChannel[T] extends Channel[T] {
     result
   }
 
+  /* This method assumes the lock is being held. */
   final override protected def hasCapacity: Boolean = {
     if (syncValue.isEmpty && (readers > 0)) {
       true
@@ -233,10 +234,12 @@ class SyncChannel[T] extends Channel[T] {
     }
   }
 
+  /* This method assumes the lock is being held. */
   final override protected def hasMessages: Boolean = {
-    syncValue.isDefined
+    syncValue.isDefined && Thread.currentThread().getId != sender
   }
 
+  /* This method assumes the lock is being held. */
   final protected def fetchValueOpt(): Option[T] = {
     if (syncValue.nonEmpty) {
       notifyWriters()
@@ -247,34 +250,7 @@ class SyncChannel[T] extends Channel[T] {
     v
   }
 
-  final override private[channel] def hasFreeCapacityStatus: Int = {
-    lock.lock()
-    val status = if (closed) {
-      Channel.CLOSED
-    } else if (syncValue.isEmpty) {
-      Channel.AVAILABLE
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
-  }
-
-  final override private[channel] def hasMessagesStatus: Int = {
-    lock.lock()
-    val status = if (hasMessages && closed) {
-      Channel.AVAILABLE
-    } else if (closed) {
-      Channel.CLOSED
-    } else if (hasMessages || writers > 0 || Thread.currentThread().getId != sender) {
-      Channel.AVAILABLE
-    }  else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
-  }
-
+  /* This method assumes the lock is being held. */
   final private def notifySyncReaders(): Unit = {
     if (readers > 0) {
       crd.signal()
