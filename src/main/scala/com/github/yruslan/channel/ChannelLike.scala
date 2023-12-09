@@ -15,15 +15,6 @@
 
 package com.github.yruslan.channel
 
-import com.github.yruslan.channel.impl.Waiter
-
 trait ChannelLike {
   def isClosed: Boolean
-
-  private [channel] def hasMessagesStatus: Int
-  private [channel] def hasFreeCapacityStatus: Int
-  private [channel] def ifEmptyAddReaderWaiter(waiter: Waiter): Boolean
-  private [channel] def ifFullAddWriterWaiter(waiter: Waiter): Boolean
-  private [channel] def delReaderWaiter(waiter: Waiter): Unit
-  private [channel] def delWriterWaiter(waiter: Waiter): Unit
 }
