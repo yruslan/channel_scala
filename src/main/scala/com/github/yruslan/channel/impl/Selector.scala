@@ -15,10 +15,8 @@
 
 package com.github.yruslan.channel.impl
 
-import com.github.yruslan.channel.ChannelLike
-
 private[channel] abstract class Selector(val isSender: Boolean,
-                                         val channel: ChannelLike) {
+                                         val channel: ChannelImpl) {
   def sendRecv(): Boolean
   def afterAction(): Unit
 }

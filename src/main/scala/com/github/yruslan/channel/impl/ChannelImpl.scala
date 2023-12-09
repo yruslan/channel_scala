@@ -13,8 +13,18 @@
  * limitations under the License.
  */
 
-package com.github.yruslan.channel
+package com.github.yruslan.channel.impl
 
-abstract class ChannelDecorator[T](inputChannel: ReadChannel[T]) extends ChannelLike {
-  override def isClosed: Boolean = inputChannel.isClosed
+trait ChannelImpl {
+  private[channel] def hasMessagesStatus: Int
+
+  private[channel] def hasFreeCapacityStatus: Int
+
+  private[channel] def ifEmptyAddReaderWaiter(waiter: Waiter): Boolean
+
+  private[channel] def ifFullAddWriterWaiter(waiter: Waiter): Boolean
+
+  private[channel] def delReaderWaiter(waiter: Waiter): Unit
+
+  private[channel] def delWriterWaiter(waiter: Waiter): Unit
 }

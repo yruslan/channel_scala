@@ -17,11 +17,11 @@ package com.github.yruslan.channel
 
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
-import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList, Waiter}
+import com.github.yruslan.channel.impl.{Awaiter, ChannelImpl, Selector, SimpleLinkedList, Waiter}
 
 import scala.concurrent.duration.Duration
 
-abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
+abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChannel[T] {
   protected var readers: Int = 0
   protected var writers: Int = 0
   protected var closed = false
