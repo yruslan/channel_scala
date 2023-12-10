@@ -34,7 +34,7 @@ object ScalacOptions {
   lazy val scalacOptions211 = scalacOptionsForAllVersions ++
     Seq(
       "-Xsource:2.11",           // Treat compiler input as Scala source for scala-2.11
-      "-target:jvm-1.7"          // Target JVM 1.7
+      "-target:jvm-1.8"          // Target JVM 1.8
     )
 
   lazy val scalacOptions212 = scalacOptionsForAllVersions ++ compilerWarningOptions ++
