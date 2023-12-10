@@ -19,11 +19,11 @@ import com.github.yruslan.channel.Channel.{SUCCESS, CLOSED, WAITING_REQUIRED}
 
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
-import com.github.yruslan.channel.impl.{Awaiter, ChannelImpl, Selector, SimpleLinkedList, Waiter}
+import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList, Waiter}
 
 import scala.concurrent.duration.Duration
 
-abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChannel[T] {
+abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected var readers: Int = 0
   protected var writers: Int = 0
   protected var closed = false
@@ -128,24 +128,6 @@ abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChan
     }
   }
 
-  final override private[channel] def delReaderWaiter(waiter: Waiter): Unit = {
-    lock.lock()
-    try {
-      readWaiters.remove(waiter)
-    } finally {
-      lock.unlock()
-    }
-  }
-
-  final override private[channel] def delWriterWaiter(waiter: Waiter): Unit = {
-    lock.lock()
-    try {
-      writeWaiters.remove(waiter)
-    } finally {
-      lock.unlock()
-    }
-  }
-
   /* This method assumes the lock is being held. */
   final protected def notifyReaders(): Unit = {
     if (readers > 0) {
@@ -223,6 +205,26 @@ abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChan
         readers -= 1
         crd.signal()
         throw ex
+    }
+  }
+
+  @inline
+  final private def delReaderWaiter(waiter: Waiter): Unit = {
+    lock.lock()
+    try {
+      readWaiters.remove(waiter)
+    } finally {
+      lock.unlock()
+    }
+  }
+
+  @inline
+  final private def delWriterWaiter(waiter: Waiter): Unit = {
+    lock.lock()
+    try {
+      writeWaiters.remove(waiter)
+    } finally {
+      lock.unlock()
     }
   }
 }
@@ -409,6 +411,7 @@ object Channel {
     false
   }
 
+  @inline
   final private def removeWaiters(waiter: Waiter, sel: Array[Selector], numberOfWaiters: Int): Unit = {
     var j = 0
     while (j < numberOfWaiters) {

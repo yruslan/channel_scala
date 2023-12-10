@@ -39,20 +39,23 @@ class Awaiter(timeout: Duration) {
     }
   }
 
-  private def isTimeoutExpired: Boolean = {
+  @inline
+  final private def isTimeoutExpired: Boolean = {
     if (!timeout.isFinite) {
       false
     } else {
-      elapsedTime >= timeoutMilli
+      elapsedTime() >= timeoutMilli
     }
   }
 
-  private def elapsedTime(): Long = {
+  @inline
+  final private def elapsedTime(): Long = {
     val now = Instant.now()
     java.time.Duration.between(startInstant, now).toMillis
   }
 
-  private def timeLeft(): Long = {
+  @inline
+  final private def timeLeft(): Long = {
     val timeLeft = timeoutMilli - elapsedTime()
     if (timeLeft < 0L) 0L else timeLeft
   }

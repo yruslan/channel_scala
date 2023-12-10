@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+import ScalacOptions._
+
 lazy val scala211 = "2.11.12"
 lazy val scala212 = "2.12.18"
 lazy val scala213 = "2.13.12"
@@ -20,8 +22,10 @@ lazy val scala213 = "2.13.12"
 name := "channel_scala"
 organization := "com.github.yruslan"
 
-scalaVersion := scala211
+scalaVersion := scala212
 crossScalaVersions := Seq(scala211, scala212, scala213)
+
+scalacOptions := scalacOptionsFor(scalaVersion.value)
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.15" % "test"
 
