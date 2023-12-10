@@ -15,6 +15,8 @@
 
 package com.github.yruslan.channel
 
+import com.github.yruslan.channel.Channel.{SUCCESS, CLOSED, WAITING_REQUIRED}
+
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
 import com.github.yruslan.channel.impl.{Awaiter, ChannelImpl, Selector, SimpleLinkedList, Waiter}
@@ -36,40 +38,6 @@ abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChan
   protected val lock = new ReentrantLock()
   protected val crd: Condition = lock.newCondition()
   protected val cwr: Condition = lock.newCondition()
-
-  final override private[channel] def ifEmptyAddReaderWaiter(waiter: Waiter): Boolean = {
-    lock.lock()
-    try {
-      if (closed) {
-        false
-      } else if (hasMessages) {
-        readWaiters.append(waiter)
-        false
-      } else {
-        readWaiters.append(waiter)
-        true
-      }
-    } finally {
-      lock.unlock()
-    }
-  }
-
-  final override private[channel] def ifFullAddWriterWaiter(waiter: Waiter): Boolean = {
-    lock.lock()
-    try {
-      if (closed) {
-        false
-      } else if (hasCapacity) {
-        writeWaiters.append(waiter)
-        false
-      } else {
-        writeWaiters.append(waiter)
-        true
-      }
-    } finally {
-      lock.unlock()
-    }
-  }
 
   final override def fornew[U](f: T => U): Unit = {
     var valueOpt = tryRecv()
@@ -109,7 +77,24 @@ abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChan
 
   final override def sender(value: T)(action: => Unit = {}): Selector = {
     new Selector(true, this) {
-      override def sendRecv(): Boolean = trySend(value)
+      override def sendRecv(waiterOpt: Option[Waiter]): Int = {
+        lock.lock()
+        try {
+          if (closed) {
+            CLOSED
+          } else {
+            val ok = trySend(value)
+            if (ok) {
+              SUCCESS
+            } else {
+              waiterOpt.foreach(waiter => writeWaiters.append(waiter))
+              WAITING_REQUIRED
+            }
+          }
+        } finally {
+          lock.unlock()
+        }
+      }
 
       override def afterAction(): Unit = action
     }
@@ -119,40 +104,28 @@ abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChan
     new Selector(false, this) {
       var el: T = _
 
-      override def sendRecv(): Boolean = {
-        val opt = tryRecv()
-        opt.foreach(v => el = v)
-        opt.isDefined
+      override def sendRecv(waiterOpt: Option[Waiter]): Int = {
+        lock.lock()
+        try {
+          val opt = tryRecv()
+          opt.foreach(v => el = v)
+          if (opt.isEmpty) {
+            if (closed) {
+              CLOSED
+            } else {
+              waiterOpt.foreach(waiter => readWaiters.append(waiter))
+              WAITING_REQUIRED
+            }
+          } else {
+            SUCCESS
+          }
+        } finally {
+          lock.unlock()
+        }
       }
 
       override def afterAction(): Unit = action(el)
     }
-  }
-
-  final override private[channel] def hasMessagesStatus: Int = {
-    lock.lock()
-    val status = if (hasMessages) {
-      Channel.AVAILABLE
-    } else if (closed) {
-      Channel.CLOSED
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
-  }
-
-  final override private[channel] def hasFreeCapacityStatus: Int = {
-    lock.lock()
-    val status = if (closed) {
-      Channel.CLOSED
-    } else if (hasCapacity) {
-      Channel.AVAILABLE
-    } else {
-      Channel.NOT_AVAILABLE
-    }
-    lock.unlock()
-    status
   }
 
   final override private[channel] def delReaderWaiter(waiter: Waiter): Unit = {
@@ -255,8 +228,8 @@ abstract class Channel[T] extends ChannelImpl with ReadChannel[T] with WriteChan
 }
 
 object Channel {
-  val NOT_AVAILABLE = 0
-  val AVAILABLE = 1
+  val SUCCESS = 0
+  val WAITING_REQUIRED = 1
   val CLOSED = 2
 
   /**
@@ -383,13 +356,9 @@ object Channel {
     var i = 0
     while (i < sel.length) {
       val s = sel(i)
-      val blocking = if (s.isSender) {
-        s.channel.ifFullAddWriterWaiter(waiter)
-      } else {
-        s.channel.ifEmptyAddReaderWaiter(waiter)
-      }
-      if (!blocking && s.sendRecv()) {
-        removeWaiters(waiter, sel, i + 1)
+      val status = s.sendRecv(Some(waiter))
+      if (status == SUCCESS) {
+        removeWaiters(waiter, sel, i)
         s.afterAction()
         return true
       }
@@ -402,17 +371,15 @@ object Channel {
       while (i < sel.length) {
         //println(s"${Thread.currentThread().getId} Checking...")
         val s = sel(i)
-        val status = if (s.isSender)
-          s.channel.hasFreeCapacityStatus
-        else
-          s.channel.hasMessagesStatus
+        val status = s.sendRecv(None)
 
-        if (status == AVAILABLE && s.sendRecv()) {
+        if (status == SUCCESS) {
           removeWaiters(waiter, sel, sel.length)
           s.afterAction()
           return true
         } else if (status == CLOSED) {
           //println(s"${Thread.currentThread().getId} Got closed...")
+          removeWaiters(waiter, sel, sel.length)
           return false
         }
         i += 1

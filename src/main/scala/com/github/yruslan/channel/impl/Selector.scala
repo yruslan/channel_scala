@@ -17,6 +17,6 @@ package com.github.yruslan.channel.impl
 
 private[channel] abstract class Selector(val isSender: Boolean,
                                          val channel: ChannelImpl) {
-  def sendRecv(): Boolean
+  def sendRecv(Opt: Option[Waiter]): Int
   def afterAction(): Unit
 }
