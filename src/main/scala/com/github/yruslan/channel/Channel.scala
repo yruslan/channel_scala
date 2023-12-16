@@ -15,13 +15,14 @@
 
 package com.github.yruslan.channel
 
-import com.github.yruslan.channel.Channel.{SUCCESS, CLOSED, WAITING_REQUIRED}
+import com.github.yruslan.channel.Channel.{CLOSED, SUCCESS, WAITING_REQUIRED}
 
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
 import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList, Waiter}
 
 import scala.concurrent.duration.Duration
+import scala.util.Random
 
 abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected var readers: Int = 0
@@ -354,12 +355,10 @@ object Channel {
     */
   @throws[InterruptedException]
   final def trySelect(timout: Duration, isPriorityOrdered: Boolean, selector: Selector, selectors: Selector*): Boolean = {
-    val sel = if (isPriorityOrdered) {
-      // If channels are ordered by priority, retain the original order
-      (selector :: selectors.toList).toArray
-    } else {
-      // If several channels have pending messages, select randomly the channel to return
-      scala.util.Random.shuffle(selector :: selectors.toList).toArray
+    val sel = (selector +: selectors).toArray
+
+    if (!isPriorityOrdered) {
+      shuffleArray(sel)
     }
 
     if (ifHasDefaultProcessSelectors(sel))
@@ -480,6 +479,18 @@ object Channel {
         sel(j).channel.delReaderWaiter(waiter)
       }
       j += 1
+    }
+  }
+
+  final private def shuffleArray(array: Array[Selector]): Unit = {
+    val random = new Random()
+    var i = array.length - 1
+    while (i > 0) {
+      val j = random.nextInt(i + 1)
+      val temp = array(i)
+      array(i) = array(j)
+      array(j) = temp
+      i -= 1
     }
   }
 }
