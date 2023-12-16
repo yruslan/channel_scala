@@ -76,7 +76,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   protected def fetchValueOpt(): Option[T]
 
   final override def sender(value: T)(action: => Unit = {}): Selector = {
-    new Selector(true, this) {
+    new Selector(true, false, this) {
       override def sendRecv(waiterOpt: Option[Waiter]): Int = {
         lock.lock()
         try {
@@ -101,7 +101,7 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
   }
 
   final override def recver(action: T => Unit): Selector = {
-    new Selector(false, this) {
+    new Selector(false, false, this) {
       var el: T = _
 
       override def sendRecv(waiterOpt: Option[Waiter]): Int = {
@@ -125,6 +125,16 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
       }
 
       override def afterAction(): Unit = action(el)
+    }
+  }
+
+  final override def default(action: => Unit): Selector = {
+    new Selector(false, true, this) {
+      override def sendRecv(waiterOpt: Option[Waiter]): Int = {
+        SUCCESS
+      }
+
+      override def afterAction(): Unit = action
     }
   }
 
@@ -340,12 +350,10 @@ object Channel {
     * @param isPriorityOrdered If true, when more then one selectors is ready, the first one in the list will be selected.
     * @param selector          A first channel to wait for (mandatory).
     * @param selectors         Other channels to wait for.
-    * @return true if one of pending operations wasn't blockingю
+    * @return true if one of pending operations wasn't blocking.
     */
   @throws[InterruptedException]
-  def trySelect(timout: Duration, isPriorityOrdered: Boolean, selector: Selector, selectors: Selector*): Boolean = {
-    val waiter = new Waiter(new Semaphore(0), Thread.currentThread().getId)
-
+  final def trySelect(timout: Duration, isPriorityOrdered: Boolean, selector: Selector, selectors: Selector*): Boolean = {
     val sel = if (isPriorityOrdered) {
       // If channels are ordered by priority, retain the original order
       (selector :: selectors.toList).toArray
@@ -353,6 +361,11 @@ object Channel {
       // If several channels have pending messages, select randomly the channel to return
       scala.util.Random.shuffle(selector :: selectors.toList).toArray
     }
+
+    if (ifHasDefaultProcessSelectors(sel))
+      return true
+
+    val waiter = new Waiter(new Semaphore(0), Thread.currentThread().getId)
 
     // Add waiters
     var i = 0
@@ -410,6 +423,52 @@ object Channel {
     // This never happens since the method can only exit on other return paths
     false
   }
+
+  final private def ifHasDefaultProcessSelectors(selectors: Array[Selector]): Boolean = {
+    var i = 0
+    var defaults = 0
+    var defaultSelectorIndex = -1
+    while (i < selectors.length) {
+      if (selectors(i).isDefault) {
+        defaultSelectorIndex = i
+        defaults += 1
+      }
+      i += 1
+    }
+
+    if (defaults == 1) {
+      selectWithDefault(selectors, defaultSelectorIndex)
+      true
+    } else if (defaults > 1) {
+      throw new IllegalArgumentException("Only one default selector is allowed.")
+    } else {
+      false
+    }
+  }
+
+  /**
+    * Activates one of selectors if available, executes the default selector if no other selectors are available.
+    *
+    * @param selectors         Channel selectors to wait for.
+    */
+  @throws[InterruptedException]
+  final private def selectWithDefault(selectors: Array[Selector], defaultSelectorIndex: Int): Unit = {
+    var i = 0
+    while (i < selectors.length) {
+      val s = selectors(i)
+      if (!s.isDefault) {
+        val status = s.sendRecv(None)
+        if (status == SUCCESS) {
+          s.afterAction()
+          return
+        }
+      }
+      i += 1
+    }
+
+    selectors(defaultSelectorIndex).afterAction()
+  }
+
 
   @inline
   final private def removeWaiters(waiter: Waiter, sel: Array[Selector], numberOfWaiters: Int): Unit = {

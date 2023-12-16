@@ -911,6 +911,40 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       t1.interrupt()
     }
 
+    "select should execute default selector if others are not available" in {
+      val channel = Channel.make[Int]
+
+      var reached = false
+
+      var output = 0
+      Channel.select(
+        channel.sender(1) {},
+        channel.recver(v => output = v),
+        channel.default{ reached = true }
+      )
+
+      assert(reached)
+    }
+
+    "select should throw an exception if more than one default section is encountered" in {
+      val channel = Channel.make[Int]
+      var reached = false
+      var output = 0
+
+      assertThrows[IllegalArgumentException] {
+        Channel.select(
+          channel.sender(1) {},
+          channel.recver(v => output = v),
+          channel.default {
+            reached = true
+          },
+          channel.default {
+            reached = true
+          }
+        )
+      }
+    }
+
     "ping pong between 2 workers with single channel" in {
       for (_ <- Range(0, 100)) {
         val actions = new StringBuffer()
