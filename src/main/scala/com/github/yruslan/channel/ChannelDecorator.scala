@@ -15,10 +15,6 @@
 
 package com.github.yruslan.channel
 
-import com.github.yruslan.channel.impl.Selector
-
 abstract class ChannelDecorator[T](inputChannel: ReadChannel[T]) extends ChannelLike {
   override def isClosed: Boolean = inputChannel.isClosed
-
-  override def default(action: => Unit): Selector = inputChannel.default(action)
 }

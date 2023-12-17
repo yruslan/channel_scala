@@ -129,16 +129,6 @@ abstract class Channel[T] extends ReadChannel[T] with WriteChannel[T] {
     }
   }
 
-  final override def default(action: => Unit): Selector = {
-    new Selector(false, true, this) {
-      override def sendRecv(waiterOpt: Option[Waiter]): Int = {
-        SUCCESS
-      }
-
-      override def afterAction(): Unit = action
-    }
-  }
-
   /* This method assumes the lock is being held. */
   final protected def notifyReaders(): Unit = {
     if (readers > 0) {
@@ -421,6 +411,16 @@ object Channel {
     }
     // This never happens since the method can only exit on other return paths
     false
+  }
+
+  final def default(action: => Unit): Selector = {
+    new Selector(false, true, null) {
+      override def sendRecv(waiterOpt: Option[Waiter]): Int = {
+        SUCCESS
+      }
+
+      override def afterAction(): Unit = action
+    }
   }
 
   final private def ifHasDefaultProcessSelectors(selectors: Array[Selector]): Boolean = {

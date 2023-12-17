@@ -920,7 +920,7 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       Channel.select(
         channel.sender(1) {},
         channel.recver(v => output = v),
-        channel.default{ reached = true }
+        Channel.default{ reached = true }
       )
 
       assert(reached)
@@ -935,10 +935,10 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         Channel.select(
           channel.sender(1) {},
           channel.recver(v => output = v),
-          channel.default {
+          Channel.default {
             reached = true
           },
-          channel.default {
+          Channel.default {
             reached = true
           }
         )

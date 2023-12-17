@@ -19,6 +19,4 @@ import com.github.yruslan.channel.impl.Selector
 
 trait ChannelLike {
   def isClosed: Boolean
-
-  def default(action: => Unit): Selector
 }
