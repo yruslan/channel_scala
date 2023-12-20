@@ -273,6 +273,17 @@ one
 two
 ```
 
+#### Default blocks
+Like in Go, you can have default blocks that will be executed if none of other blocks are ready:
+
+```scala
+Channel.select(
+    channel1.recver{v => println(v)},
+    channel2.sender(v) { /* An action to do after the send. */ },
+    Channel.default { /* The action to do if nether channel1 nor channel2 can receive and send. */ }
+)
+```
+
 ### Non-blocking methods
 Go supports non-blocking channel operation by the elegant `default` clause in the `select` statement. The scala port
 adds separate methods that support non-blocking operations: `trySend()`, `tryRecv()` and `trySelect()`. There is an
