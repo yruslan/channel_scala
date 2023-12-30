@@ -16,11 +16,10 @@
 package com.github.yruslan.channel
 
 import com.github.yruslan.channel.Channel.{CLOSED, SUCCESS, WAITING_REQUIRED}
+import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList, Waiter}
 
 import java.util.concurrent.locks.{Condition, ReentrantLock}
 import java.util.concurrent.{Semaphore, TimeUnit}
-import com.github.yruslan.channel.impl.{Awaiter, Selector, SimpleLinkedList, Waiter}
-
 import scala.concurrent.duration.Duration
 import scala.util.Random
 
@@ -373,7 +372,6 @@ object Channel {
       // Re-checking all channels
       i = 0
       while (i < sel.length) {
-        //println(s"${Thread.currentThread().getId} Checking...")
         val s = sel(i)
         val status = s.sendRecv(None)
 
@@ -382,7 +380,6 @@ object Channel {
           s.afterAction()
           return true
         } else if (status == CLOSED) {
-          //println(s"${Thread.currentThread().getId} Got closed...")
           removeWaiters(waiter, sel, sel.length)
           return false
         }
@@ -393,9 +390,7 @@ object Channel {
         if (timout.isFinite) {
           waiter.sem.tryAcquire(timout.toMillis, TimeUnit.MILLISECONDS)
         } else {
-          //println(s"${Thread.currentThread().getId} Waiting...")
           waiter.sem.acquire()
-          //println(s"${Thread.currentThread().getId} Awake...")
           true
         }
       } catch {

@@ -15,8 +15,6 @@
 
 package com.github.yruslan.channel
 
-import com.github.yruslan.channel.impl.Selector
-
 trait ChannelLike {
   def isClosed: Boolean
 }

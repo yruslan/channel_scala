@@ -977,8 +977,6 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         Await.result(fut1, Duration.apply(4, SECONDS))
         Await.result(fut2, Duration.apply(4, SECONDS))
 
-        //println(actions.toString)
-
         // 10 messages sent and received, by 2 workers
         assert(actions.toString.length == 80)
       }
