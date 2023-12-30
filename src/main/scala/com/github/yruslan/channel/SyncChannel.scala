@@ -28,7 +28,6 @@ class SyncChannel[T] extends Channel[T] {
     lock.lock()
     try {
       if (!closed) {
-        //println(s"${Thread.currentThread().getId} Closing...")
         closed = true
         readWaiters.foreach(w => w.sem.release())
         writeWaiters.foreach(w => w.sem.release())
@@ -59,7 +58,6 @@ class SyncChannel[T] extends Channel[T] {
         awaitWriters()
       }
       if (!closed) {
-        //println(s"${Thread.currentThread().getId} Sent: ${value}")
         syncValue = Option(value)
         sender = Thread.currentThread().getId
         notifySyncReaders()
@@ -84,7 +82,6 @@ class SyncChannel[T] extends Channel[T] {
         if (!hasCapacity) {
           false
         } else {
-          //println(s"${Thread.currentThread().getId} Sent: ${value}")
           syncValue = Option(value)
           sender = Thread.currentThread().getId
           notifySyncReaders()
@@ -172,7 +169,6 @@ class SyncChannel[T] extends Channel[T] {
           None
         } else {
           val v = syncValue
-          //println(s"${Thread.currentThread().getId} Received: ${v}")
           syncValue = None
           sender = -1
           notifyWriters()
@@ -257,20 +253,14 @@ class SyncChannel[T] extends Channel[T] {
     } else {
       if (!readWaiters.isEmpty) {
         val count = readWaiters.size
-        //println(s"${Thread.currentThread().getId} Readers count: ${count}")
         var waiter = readWaiters.returnHeadAndRotate()
         var i = 0
         while (i < count && waiter.threadId == sender) {
           i += 1
-          if (waiter.threadId == sender) {
-            //println(s"${Thread.currentThread().getId} Skipping waking up ${waiter.threadId}...${count}")
-          }
           waiter = readWaiters.returnHeadAndRotate()
-
         }
 
         if (waiter.threadId != sender) {
-          //println(s"${Thread.currentThread().getId} Waking up ${waiter.threadId}...")
           waiter.sem.release()
         }
       }
