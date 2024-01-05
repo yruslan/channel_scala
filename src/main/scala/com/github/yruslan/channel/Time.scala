@@ -19,9 +19,23 @@ import java.time.Instant
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 
+/**
+  * The object contains channel generators similar to GoLang: https://gobyexample.com/tickers
+  */
 object Time {
+  /**
+    * Create a channel that gets a single message after the specified duration, and then closes.
+    *
+    * Example:
+    * {{{
+    *   val after = Time.after(Duration(10, TimeUnit.MILLISECONDS))
+    *   after.recv()
+    *   // 10 ms has passed.
+    *   // You don't need to close the channel
+    * }}}
+    */
   def after(duration: Duration)(implicit executor: ExecutionContext): ReadChannel[Instant] = {
-    val channel = Channel.make[Instant]
+    val channel = Channel.make[Instant](1)
     Future {
       Thread.sleep(duration.toMillis)
       channel.send(Instant.now())
@@ -31,7 +45,17 @@ object Time {
     channel
   }
 
-  def tick(duration: Duration)(implicit executor: ExecutionContext): ReadChannel[Instant] = {
+  /**
+    * Create a ticker channel, see https://gobyexample.com/tickers
+    *
+    * {{{
+    *   val ticker = Time.newTicker(Duration(10, TimeUnit.MILLISECONDS))
+    *   val instant = ticker.recv()
+    *   ticker.close()
+    * }}}
+    *
+    */
+  def newTicker(duration: Duration)(implicit executor: ExecutionContext): Channel[Instant] = {
     val channel = Channel.make[Instant]
     Future {
       while (!channel.isClosed) {
