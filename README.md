@@ -284,6 +284,38 @@ Channel.select(
 )
 ```
 
+#### Time.after()
+Like in Go, you can use `Time.after(duration)` to generate a channel that sends a message after the specified time has
+passed. You don't need to close the channel afterward.
+
+```scala
+import com.github.yruslan.channel._
+
+Channel.select(
+    someChannel.recver{v => println(s"Got a message in time: $v")},
+    Time.after(Duration(10, TimeUnit.SECONDS)).recver{ v => println("Time is out!") }
+)
+```
+
+#### Time.newTicker()
+Like in Go, you can use `Time.newTicker(duration)` to generate a channel that sends a message after the specified time.
+When the message is consumed, the ticker will generate another message after the same time duration.
+Tickers should be closed after they are not in use.
+
+```scala
+import com.github.yruslan.channel._
+
+val ticker = Time.newTicker(Duration(10, TimeUnit.SECONDS))
+
+Channel.select(
+    someChannel.recver{v => println(s"Got a message: $v")},
+    ticker.recver{ _ => println("Tick.") }
+)
+
+ticker.close()
+```
+
+
 ### Non-blocking methods
 Go supports non-blocking channel operation by the elegant `default` clause in the `select` statement. The scala port
 adds separate methods that support non-blocking operations: `trySend()`, `tryRecv()` and `trySelect()`. There is an
