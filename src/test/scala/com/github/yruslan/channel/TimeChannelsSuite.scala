@@ -22,12 +22,12 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 
-class TimeSuite extends AnyWordSpec {
-  "newTicker" should {
+class TimeChannelsSuite extends AnyWordSpec {
+  "ticker" should {
     "generate a ticker that ticks until closed" in {
       val start = Instant.now()
 
-      val ticker = Time.newTicker(Duration(10, TimeUnit.MILLISECONDS))
+      val ticker = TimeChannels.ticker(Duration(10, TimeUnit.MILLISECONDS))
 
       ticker.recv()
       val middle = Instant.now()
@@ -42,7 +42,7 @@ class TimeSuite extends AnyWordSpec {
     }
 
     "generate a ticker that ticks until closed111" in {
-      val ticker = Time.newTicker(Duration(10, TimeUnit.MILLISECONDS))
+      val ticker = TimeChannels.ticker(Duration(10, TimeUnit.MILLISECONDS))
 
       val start = Instant.now()
       ticker.close()
@@ -56,7 +56,7 @@ class TimeSuite extends AnyWordSpec {
     "generate a single shot read channel" in {
       val start = Instant.now()
 
-      val after = Time.after(Duration(10, TimeUnit.MILLISECONDS))
+      val after = TimeChannels.after(Duration(10, TimeUnit.MILLISECONDS))
 
       after.recv()
       val finish = Instant.now()
