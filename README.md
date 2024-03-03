@@ -529,6 +529,11 @@ val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Changelog
+- #### 0.2.0 released Feb 19, 2024.
+    - Add support for `default` block in `select()`.
+    - Add `after()` and `ticker()`.
+    - Change select() logic for synchronous channels to match behavior of GoLang.
+
 - #### 0.1.6 released Dec 3, 2023.
     - Fix channel filtering does not filter some values at random.
 
