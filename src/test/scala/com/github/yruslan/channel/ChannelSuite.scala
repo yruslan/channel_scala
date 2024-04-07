@@ -25,6 +25,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent._
 import scala.concurrent.duration.{Duration, SECONDS}
+import TestUtils._
 
 // This import is required for Scala 2.13 since it has a builtin Channel object.
 import com.github.yruslan.channel.Channel
@@ -1275,13 +1276,5 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       ch2.send("hello")
       assert(ch1.recv() == "hello")
     }
-  }
-
-  private def createThread(action: => Unit) = {
-    // Creating thread in the Scala 2.11 compatible way.
-    // Please do not remove 'new Runnable'
-    new Thread(new Runnable {
-      def run(): Unit = action
-    })
   }
 }
