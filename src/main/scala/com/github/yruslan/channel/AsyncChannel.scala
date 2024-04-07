@@ -178,11 +178,14 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
   }
 
   final override def isClosed: Boolean = {
-    if (q.nonEmpty) {
+    lock.lock()
+    val result = if (q.nonEmpty) {
       false
     } else {
       closed
     }
+    lock.unlock()
+    result
   }
 
   /* This method assumes the lock is being held. */
