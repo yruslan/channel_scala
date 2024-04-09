@@ -16,10 +16,12 @@
 package com.github.yruslan.channel
 
 import java.time.Instant
-import java.util.concurrent.{Executors, TimeUnit}
+import java.util.concurrent.{ConcurrentLinkedQueue, Executors, TimeUnit}
 import org.scalatest.wordspec.AnyWordSpec
 import com.github.yruslan.channel.Channel.{select, trySelect}
+import com.github.yruslan.channel.TestUtils.createThread
 
+import scala.collection.JavaConverters.iterableAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent._
 import scala.concurrent.duration.Duration
@@ -156,6 +158,98 @@ class GuaranteesSuite extends AnyWordSpec {
       val out2 = Channel.make[Int](1)
 
       testFairness(in1, in2, out1, out2, isPriority = true)
+    }
+  }
+
+  "Measures" should {
+    "match the expected single consumer throughput and latency" in {
+      val N = 50000
+      val n = 4
+      val in = Channel.make[Int](n * 2)
+      val out = Channel.make[Int](n * 2)
+
+      val start = System.nanoTime()
+
+      val threads = Range(0, n).map { _ =>
+        val t = createThread {
+          in.foreach { a => out.send(a) }
+        }
+        t.start()
+        t
+      }
+
+      for (i <- 1 to N) {
+        in.send(i)
+        out.recv()
+      }
+
+      in.close()
+      val finish = System.nanoTime()
+
+      threads.foreach(_.join())
+
+      val throughput = N.toDouble / ((finish - start).toDouble / 1000000000.0)
+      val latency = ((finish - start).toDouble / 1000.0) / N.toDouble
+
+      println(s"[info] - Single consumer throughput: ${throughput.round} rps, latency: ${latency.round} micro seconds")
+
+      assert(throughput > 100)
+      assert(latency < 1000)
+    }
+
+    "match the expected 4 producer/consumer throughput and latency" in {
+      val N = 50000
+      val n = 4
+      val in = Channel.make[Long](n * 2)
+      val out = Channel.make[(Long, Long)](n * 2)
+      val wg = WaitGroup()
+
+      wg.add(N)
+
+      val producers = Range(0, n).map { _ =>
+        val t = createThread {
+          in.foreach { a => out.send((a, System.nanoTime())) }
+        }
+        t.start()
+        t
+      }
+
+      val start = System.nanoTime()
+
+      val durations = new ConcurrentLinkedQueue[Long]()
+
+      val consumers = Range(0, n).map { _ =>
+        val t = createThread {
+          out.foreach { case(start, end) =>
+            durations.add(end - start)
+            wg.done()
+          }
+        }
+        t.start()
+        t
+      }
+
+      for (_ <- 1 to N) {
+        in.send(System.nanoTime())
+      }
+      in.close()
+
+      wg.await()
+
+      val finish = System.nanoTime()
+
+      out.close()
+      producers.foreach(_.join())
+      consumers.foreach(_.join())
+
+      val throughput = N.toDouble / ((finish - start).toDouble / 1000000000.0)
+      val durationArray = durations.asScala.toArray
+      val latency = durationArray.map(x => x.toDouble).sum / durationArray.length.toDouble / 2000.0 // chain of 2 send/recv
+
+      println(s"[info] - 4 producer/consumer throughput: ${throughput.round} rps, latency: ${latency.round} micro seconds")
+
+      assert(throughput > 100)
+      assert(latency < 1000)
     }
   }
 
