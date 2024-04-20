@@ -35,11 +35,14 @@ object TimeChannels {
     * }}}
     */
   def after(duration: Duration)(implicit executor: ExecutionContext): ReadChannel[Instant] = {
-    val channel = Channel.make[Instant](1)
+    val channel = new AsyncChannel[Instant](1)
     Future {
       Thread.sleep(duration.toMillis)
-      channel.send(Instant.now())
-      channel.close()
+      try {
+        channel.sendAndClose(Instant.now())
+      } catch {
+        case _: IllegalStateException => // Ignore if the channel is already closed
+      }
     }
 
     channel
@@ -56,11 +59,15 @@ object TimeChannels {
     *
     */
   def ticker(duration: Duration)(implicit executor: ExecutionContext): Channel[Instant] = {
-    val channel = Channel.make[Instant]
+    val channel = new SyncChannel[Instant]
     Future {
       while (!channel.isClosed) {
         Thread.sleep(duration.toMillis)
-        channel.send(Instant.now())
+        try {
+          channel.send(Instant.now())
+        } catch {
+          case _: IllegalStateException => // Ignore if the channel is already closed
+        }
       }
     }
 

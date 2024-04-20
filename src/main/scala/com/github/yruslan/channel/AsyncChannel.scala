@@ -207,4 +207,23 @@ class AsyncChannel[T](maxCapacity: Int) extends Channel[T] {
       Option(q.dequeue())
     }
   }
+
+  /** This method is for internal use only. It is used for performance-optimized special channels. */
+  final private[channel] def sendAndClose(value: T): Unit = {
+    lock.lock()
+    try {
+      if (closed) {
+        throw new IllegalStateException(s"Attempt to send to a closed channel.")
+      }
+
+      q.enqueue(value)
+      closed = true
+      readWaiters.foreach(w => w.sem.release())
+      writeWaiters.foreach(w => w.sem.release())
+      crd.signalAll()
+      cwr.signalAll()
+    } finally {
+      lock.unlock()
+    }
+  }
 }
