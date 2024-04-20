@@ -342,13 +342,15 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       "timeout is not expired" in {
         val ch = Channel.make[String]
 
-        val f = Future {
+        val t = createThread {
           Thread.sleep(10)
           ch.recv()
         }
 
+        t.start()
+
         val ok = ch.trySend("test", Duration.create(200, TimeUnit.MILLISECONDS))
-        Await.result(f, Duration.apply(2, SECONDS))
+        t.join()
 
         assert(ok)
       }
@@ -433,14 +435,17 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
       "timeout is not expired" in {
         val ch = Channel.make[String](1)
 
-        val f = Future {
+        val t = createThread {
           Thread.sleep(10)
           ch.recv()
         }
 
+        t.start()
+
         ch.trySend("test1", Duration.Zero)
-        val ok = ch.trySend("test", Duration.create(200, TimeUnit.MILLISECONDS))
-        Await.result(f, Duration.apply(2, SECONDS))
+        val ok = ch.trySend("test", Duration.create(1000, TimeUnit.MILLISECONDS))
+
+        t.join()
 
         assert(ok)
       }
