@@ -11,11 +11,10 @@ class WaitGroupSuite extends AnyWordSpec {
       val n = 10
       for (_ <- 1 to n) {
         wg.add()
-        val k = createThread {
+        createThread {
           Thread.sleep(1000)
           wg.done()
-        }
-        k.start()
+        }.start()
       }
       wg.await()
     }

@@ -315,6 +315,21 @@ Channel.select(
 ticker.close()
 ```
 
+#### WaitGroup
+Similar to GoLang you can use `WaitGroup` to coordinate multiple threads doing work. Use `add()`, `done()`, and `await()`.
+```scala
+val wg = WaitGroup()
+val n = 10
+for (_ <- 1 to n) {
+  wg.add()
+  new Thread {
+    // do some work
+    wg.done()
+  }.start()
+}
+wg.await()
+```
+
 ### Non-blocking methods
 Go supports non-blocking channel operation by the elegant `default` clause in the `select` statement. The scala port
 adds separate methods that support non-blocking operations: `trySend()`, `tryRecv()` and `trySelect()`. There is an
