@@ -241,6 +241,8 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         )
       }
 
+      setUncaughtExceptionHandler(t1) ((_, _) => {})
+
       t1.start()
       t2.start()
 
@@ -274,6 +276,8 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
         ch.send(200)
         ch.send(300)
       }
+
+      setUncaughtExceptionHandler(t1) ((_, _) => {})
 
       val t2 = createThread {
         ch.send(400)
@@ -502,12 +506,18 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     "handle non-blocking way" when {
       "data is available" in {
         val ch = Channel.make[String]
+        val wg = WaitGroup()
 
-        Future {
+        wg.add(1)
+        val t = createThread {
+          wg.done()
           ch.send("test")
         }
-        Thread.sleep(30)
+        t.start()
+        wg.await()
+        Thread.sleep(100)
         val v = ch.tryRecv(Duration.Zero)
+        t.join()
 
         assert(v.nonEmpty)
         assert(v.contains("test"))
@@ -525,11 +535,14 @@ class ChannelSuite extends AnyWordSpec with BeforeAndAfterAll {
     "handle finite timeouts" when {
       "timeout is not expired" in {
         val ch = Channel.make[String]
+        val wg = WaitGroup()
+        wg.add()
 
         val f = Future {
-          Thread.sleep(10)
-          ch.trySend("test", Duration.Zero)
+          wg.done()
+          ch.send("test")
         }
+        wg.await()
 
         val v = ch.tryRecv(Duration.create(200, TimeUnit.MILLISECONDS))
         Await.result(f, Duration.apply(2, SECONDS))
