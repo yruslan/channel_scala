@@ -544,6 +544,10 @@ val lst = chInput.toList // List(1, 2, 3)
 ```
 
 ## Changelog
+- #### 0.2.1 released May 11, 2024.
+    - Add [wait groups](https://github.com/yruslan/channel_scala/tree/master?tab=readme-ov-file#waitgroup).
+    - Improve the performance of time-based channels.
+
 - #### 0.2.0 released Feb 19, 2024.
     - Add support for `default` block in `select()`.
     - Add `after()` and `ticker()`.
