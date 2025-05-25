@@ -15,6 +15,11 @@ syntax: glob
 
 # VsCode
 .project
+.bloop
+.metals
+metals.sbt
+settings.json
+sbt.json
 
 # idea
 .idea
