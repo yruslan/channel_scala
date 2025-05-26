@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-sbt:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        scala: [ 2.11.12, 2.12.19, 2.13.13 ]
+    name: Scala ${{matrix.scala}}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup JDK and sbt
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 8
+          cache: sbt
+      - name: Build and run tests
+        run: sbt ++${{matrix.scala}} test
