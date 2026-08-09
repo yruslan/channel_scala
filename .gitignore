@@ -1,2 +1,39 @@
+# use glob syntax.
+syntax: glob
+*.ser
 *.class
-*.log
+*~
+*.bak
+*.old
+.DS_Store
+
+# eclipse conf file
+.settings
+.classpath
+.manager
+.scala_dependencies
+
+# VsCode
+.project
+.bloop
+.metals
+metals.sbt
+settings.json
+sbt.json
+
+# idea
+.idea
+*.iml
+
+# building
+target
+build
+null
+tmp*
+temp*
+dist
+test-output
+build.log
+
+.cache*
+dependency-reduced-pom.xml
