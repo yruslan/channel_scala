@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scala: [ 2.11.12, 2.12.19, 2.13.13 ]
+        scala: [ 2.11.12, 2.12.21, 2.13.18 ]
     name: Scala ${{matrix.scala}}
     steps:
       - name: Checkout code
