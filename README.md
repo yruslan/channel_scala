@@ -1,3 +1,5 @@
+
+
 # Channel - a port of GoLang channels to Scala 
 [![Build](https://github.com/yruslan/channel_scala/workflows/Build/badge.svg)](https://github.com/yruslan/channel_scala/actions)
 
@@ -14,7 +16,7 @@ semaphores as underlying concurrency primitives so the performance is not expect
 
 |   Scala 2.11   |     Scala 2.12    |  Scala 2.13 |
 |:--------------:|:-----------------:|:------------:|
-| [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.12) | [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.12/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.12) | [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.13) |
+| [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.11) | [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.12/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.12) | [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.yruslan/channel_scala_2.13) |
 
 ## Motivation
 Scala provides channels as a part of the standard library (https://www.scala-lang.org/api/2.13.0/scala/concurrent/Channel.html).
