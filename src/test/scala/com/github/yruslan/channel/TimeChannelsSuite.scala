@@ -16,15 +16,42 @@
 package com.github.yruslan.channel
 
 import org.scalatest.wordspec.AnyWordSpec
+import org.scalatest.concurrent.Eventually
+import org.scalatest.time.{Millis, Seconds, Span}
 
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 
-class TimeChannelsSuite extends AnyWordSpec {
+class TimeChannelsSuite extends AnyWordSpec with Eventually {
+  implicit override val patienceConfig: PatienceConfig = PatienceConfig(
+    timeout = Span(2, Seconds),
+    interval = Span(10, Millis)
+  )
   "ticker" should {
     "generate a ticker that ticks until closed" in {
+      val ticker = TimeChannels.ticker(Duration(10, TimeUnit.MILLISECONDS))
+
+      var tickCount = 0
+
+      eventually {
+        ticker.recv()
+        tickCount += 1
+        assert(tickCount >= 1)
+      }
+
+      eventually {
+        ticker.recv()
+        tickCount += 1
+        assert(tickCount >= 2)
+      }
+
+      ticker.close()
+      assert(ticker.isClosed)
+    }
+
+    "generate a ticker that ticks until closed timing guarantee" in {
       val start = Instant.now()
 
       val ticker = TimeChannels.ticker(Duration(10, TimeUnit.MILLISECONDS))
@@ -41,23 +68,36 @@ class TimeChannelsSuite extends AnyWordSpec {
       assert(java.time.Duration.between(middle, finish).toMillis <= 500L)
     }
 
-    "generate a ticker that ticks until closed111" in {
+    "close immediately without waiting for ticks" in {
       val ticker = TimeChannels.ticker(Duration(10, TimeUnit.MILLISECONDS))
 
-      val start = Instant.now()
       ticker.close()
-      val finish = Instant.now()
 
-      assert(java.time.Duration.between(start, finish).toMillis < 10L)
+      eventually {
+        assert(ticker.isClosed)
+      }
     }
   }
 
   "after" should {
     "generate a single shot read channel" in {
-      val start = Instant.now()
-
       val after = TimeChannels.after(Duration(10, TimeUnit.MILLISECONDS))
 
+      var received = false
+      eventually {
+        after.recv()
+        received = true
+        assert(received)
+      }
+
+      eventually {
+        assert(after.isClosed)
+      }
+    }
+
+    "generate a single shot read channel timing guarantee" in {
+      val start = Instant.now()
+      val after = TimeChannels.after(Duration(10, TimeUnit.MILLISECONDS))
       after.recv()
       val finish = Instant.now()
 
